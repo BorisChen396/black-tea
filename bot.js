@@ -24,21 +24,6 @@ class Music {
     async join(message) {
         const guild = message.guild;
         const userChannel = message.member.voice.channel;
-        if(voice.getVoiceConnection(guild.id)) {
-            const connection = voice.getVoiceConnection(guild.id);
-            if(!userChannel || connection.joinConfig.channelId !== userChannel.id) {
-                const name = guild.channels.cache.get(connection.joinConfig.channelId).name;
-                message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
-                tools.log(`${message.author.tag} isn't in the voice channel ${name}.`)
-                return false;
-            }
-            return true;
-        }
-        if(!userChannel) {
-            message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
-            tools.log(`${message.author.tag} doesn't join any voice channel.`);
-            return false;
-        }
         const connection = voice.joinVoiceChannel({
             channelId: userChannel.id, 
             guildId: guild.id, 
@@ -67,11 +52,10 @@ class Music {
         };
         message.react('🎵');
         tools.log(`Joined ${client.channels.cache.get(userChannel.id).name}.`, guild.id);
-        return true;
     }
     
     async play(message) {
-        if(!await this.join(message) || message.content.split(' ').length < 2) return;
+        if(message.content.split(' ').length < 2) return;
         const url = message.content.split(' ')[1];
         const list = await this.parseUrl(message.content.split(' ')[1]);
         if(!Array.isArray(list)) {
@@ -82,7 +66,6 @@ class Music {
         for(var i in list) {
             this.data[message.guild.id].queue.push(list[i]);
             if(this.data[message.guild.id].queue.length == 1) this.skip(message.guild, 0);
-            tools.log(`Item added. ${JSON.stringify(list[i])}`, message.guild.id);
         }
         message.reply(string.ITEMS_ADDED
             .replace('$NUMBER$', list.length)
@@ -91,7 +74,7 @@ class Music {
     }
     
     async skip(guild, index) {
-        if(isNaN(index) || this.data[guild.id].queue.length <= index || index < 0) return;
+        if(!guild || index == null || isNaN(index) || this.data[guild.id].queue.length <= index || index < 0) return;
         const connection = voice.getVoiceConnection(guild.id);
         if(!connection) return;
         if(!this.data[guild.id].player) {
@@ -110,7 +93,7 @@ class Music {
         switch(this.data[guild.id].queue[index].type) {
             case TYPE_YOUTUBE:
                 resource = voice.createAudioResource(
-                    await ytdl(`https://youtu.be/${data.videoId}`, {
+                    ytdl(`https://youtu.be/${data.videoId}`, {
                         filter: 'audioonly',
                         quality: 'highestaudio'
                     })
@@ -122,6 +105,26 @@ class Music {
             this.data[guild.id].player.play(resource);
             this.data[guild.id].index = index;
             tools.log(`Playing #${index}. ${JSON.stringify(this.data[guild.id].queue[index])}`, guild.id)
+        }
+    }
+
+    async pause(message) {
+        if(this.data[message.guild.id] && this.data[message.guild.id].player) {
+            this.data[message.guild.id].player.pause();
+            message.react('⏸️');
+        }
+        else {
+            message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+        }
+    }
+
+    async resume(message) {
+        if(this.data[message.guild.id] && this.data[message.guild.id].player) {
+            this.data[message.guild.id].player.unpause();
+            message.react('▶️');
+        }
+        else {
+            message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
         }
     }
     
@@ -196,35 +199,70 @@ client.on('messageCreate', async message => {
     tools.log(`Command "${cmd}" from ${message.author.tag} received.`, message.guild.id);
     switch(cmd) {
         case 'join':
-            music.join(message);
+            if(voice.getVoiceConnection(message.guild.id)) {
+                const id = voice.getVoiceConnection(message.guild.id).joinConfig.channelId;
+                const name = message.guild.cache.get(id).name;
+                message.reply(string.BOT_ALREADY_IN_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
+            }
+            else if(!member.voice.channel) message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
+            else music.join(message);
             break;
+
         case 'play':
-            music.play(message);
+            if(checkUserVoiceChannel(message.member)) music.play(message);
+            else if(message.member.voice.channel) {
+                await music.join(message);
+                music.play(message);
+            }
+            else message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
             break;
+
         case 'skip':
             const p = message.content.split(' ');
-            if(p.length >= 2) music.skip(message.guild, p[1])
-            break;
-        case 'dc':
-            const connection = voice.getVoiceConnection(message.guild.id);
-            if(connection) {
-                if(connection.joinConfig.channelId === message.member.voice.channel.id) {
-                    music.disconnect(message.guild.id);
-                    message.react('👋');
-                }
+            if(p.length >= 2) {
+                if(checkUserVoiceChannel(message.member)) music.skip(message.guild, p[1]);
                 else {
-                    const name = guild.channels.cache.get(connection.joinConfig.channelId).name;
-                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
-                    tools.log(`${message.author.tag} isn't in the voice channel ${name}.`);
+                    const connection = voice.getVoiceConnection(message.guild.id);
+                    if(connection) message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL);
+                    else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
                 }
             }
             break;
+
+        case 'pause':
+            if(checkUserVoiceChannel(message.member)) music.pause(message);
+            break;
+
+        case 'resume':
+            if(checkUserVoiceChannel(message.member)) music.resume(message);
+            break;
+
+        case 'dc':
+            if(checkUserVoiceChannel(message.member)) {
+                music.disconnect(message.guild.id);
+                message.react('👋');
+            }
+            else {
+                if(voice.getVoiceConnection(message.guild.id)) {
+                    const name = guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
+                }
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            }
+            break;
+
         default:
             tools.log(`Invalid command "${cmd}".`, message.guild.id);
             message.reply(string.UNSUPPORTED_COMMAND);
             break;
     }
 });
+
+function checkUserVoiceChannel(member) {
+    const connection = voice.getVoiceConnection(member.guild.id);
+    if(!connection || !connection.joinConfig.channelId || !member.voice.channel) return false;
+    return connection.joinConfig.channelId === member.voice.channel.id;
+}
 
 var isExiting = false;
 
@@ -236,6 +274,12 @@ process.on('SIGINT', () => {
 });
 
 process.on('SIGHUP', () => {
+    if(isExiting) return;
+    isExiting = true;
+    music.disconnectAll();
+});
+
+process.on('SIGTERM', () => {
     if(isExiting) return;
     isExiting = true;
     music.disconnectAll();
