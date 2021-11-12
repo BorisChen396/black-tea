@@ -3,5 +3,5 @@ module.exports = {
 }
 
 function log(msg, gid) {
-    console.log(`[${new Date().toISOString()}] ${gid ? gid + ": " : ""}${msg}`);
+    console.log(`${gid ? gid + ": " : ""}${msg}`);
 }

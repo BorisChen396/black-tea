@@ -18,6 +18,8 @@
     "dotenv": "^10.0.0",
     "got": "^11.8.2",
     "ffmpeg-static": "^4.4.0",
-    "libsodium-wrappers": "^0.7.9"
+    "libsodium-wrappers": "^0.7.9",
+    "ytdl-core": "^4.9.1",
+    "ytpl": "^2.2.3"
   }
 }

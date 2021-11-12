@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const Discord = require('discord.js');
 const voice = require('@discordjs/voice');
+const ytdl = require('ytdl-core');
+const ytpl = require('ytpl');
 const client = new Discord.Client({ intents: [
     Discord.Intents.FLAGS.GUILD_MESSAGES, 
     Discord.Intents.FLAGS.GUILD_VOICE_STATES, 
@@ -9,7 +11,6 @@ const client = new Discord.Client({ intents: [
 ] });
 
 const string = require('./string.json');
-const innertube = require('./innertube.js');
 const tools = require('./tools.js');
 
 const TYPE_YOUTUBE = 'type_youtube';
@@ -28,14 +29,14 @@ class Music {
             if(!userChannel || connection.joinConfig.channelId !== userChannel.id) {
                 const name = guild.channels.cache.get(connection.joinConfig.channelId).name;
                 message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
-                tools.log(`User ${message.author.tag} isn't in the same voice channel.`)
+                tools.log(`${message.author.tag} isn't in the voice channel ${name}.`)
                 return false;
             }
             return true;
         }
         if(!userChannel) {
             message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
-            tools.log(`User ${message.author.tag} doesn't join any voice channel.`);
+            tools.log(`${message.author.tag} doesn't join any voice channel.`);
             return false;
         }
         const connection = voice.joinVoiceChannel({
@@ -64,21 +65,24 @@ class Music {
             index: -1,
             isPlaying: false
         };
+        message.react('🎵');
         tools.log(`Joined ${client.channels.cache.get(userChannel.id).name}.`, guild.id);
         return true;
     }
     
     async play(message) {
         if(!await this.join(message) || message.content.split(' ').length < 2) return;
+        const url = message.content.split(' ')[1];
         const list = await this.parseUrl(message.content.split(' ')[1]);
-        if(list.length == 0) {
-            message.reply(string.INVALID_URL);
+        if(!Array.isArray(list)) {
+            message.reply(list);
+            tools.log(`Failed to add the requested item from ${message.author.tag}. (url=${url})`, message.guild.id);
             return;
         }
         for(var i in list) {
             this.data[message.guild.id].queue.push(list[i]);
             if(this.data[message.guild.id].queue.length == 1) this.skip(message.guild, 0);
-            tools.log(`Item added. (${JSON.stringify(list[i])})`, message.guild.id);
+            tools.log(`Item added. ${JSON.stringify(list[i])}`, message.guild.id);
         }
         message.reply(string.ITEMS_ADDED
             .replace('$NUMBER$', list.length)
@@ -92,24 +96,32 @@ class Music {
         if(!connection) return;
         if(!this.data[guild.id].player) {
             this.data[guild.id].player = voice.createAudioPlayer();
-            this.data[guild.id].player.on(voice.AudioPlayerStatus.Idle, () => {
-                if(this.data[guild.id].index + 1 < this.data[guild.id].queue.length)
-                    this.skip(guild, ++this.data[guild.id].index);
+            this.data[guild.id].player.on('stateChange', (oldState, newState) => {
+                if(oldState.status !== voice.AudioPlayerStatus.Idle && newState.status === voice.AudioPlayerStatus.Idle) {
+                    this.skip(guild, this.data[guild.id].index + 1);
+                }
+            });
+            this.data[guild.id].player.on('error', (error) => {
+                this.disconnect(guild.id);
             });
         }
         const data = this.data[guild.id].queue[index].data;
         var resource = null;
         switch(this.data[guild.id].queue[index].type) {
             case TYPE_YOUTUBE:
-                const url = await innertube.getUrl(data.videoId);
-                resource = voice.createAudioResource(url);
+                resource = voice.createAudioResource(
+                    await ytdl(`https://youtu.be/${data.videoId}`, {
+                        filter: 'audioonly',
+                        quality: 'highestaudio'
+                    })
+                );
                 break;
         }
         if(resource) {
             this.data[guild.id].subscription = connection.subscribe(this.data[guild.id].player);
             this.data[guild.id].player.play(resource);
             this.data[guild.id].index = index;
-            tools.log(`Playing #${index}. ${JSON.stringify(this.data[guild.id].queue[index])}`)
+            tools.log(`Playing #${index}. ${JSON.stringify(this.data[guild.id].queue[index])}`, guild.id)
         }
     }
     
@@ -128,29 +140,40 @@ class Music {
     }
     
     async parseUrl(content) {
+        var hostname;
         try {
-            if(content.includes('youtu.be/')) {
-                content = content.replace('youtu.be/', 'www.youtube.com/watch?v=');
-            }
-            const url = new URL(content);
-            if(url.hostname.includes('youtube.com')) {
-                if(url.searchParams.has('list')) {
-                    const list = await innertube.getList(url.searchParams.get('list'));
-                    for(var i in list)
-                        list[i] = new TrackInfo(
-                            TYPE_YOUTUBE,
-                            { videoId: list[i] }
-                        );
-                    return list;
+            hostname = new URL(content).hostname;
+        } catch (e) {
+            return string.INVALID_URL;
+        }
+        if(hostname === 'youtu.be') hostname = 'www.youtube.com';
+        if(hostname.includes('youtube.com')) {
+            if(ytpl.validateID(content)) {
+                try {
+                    const result = [];
+                    const list = await ytpl(content);
+                    for(var i in list.items) {
+                        const videoId = list.items[i].id;
+                        result.push(new TrackInfo(
+                            TYPE_YOUTUBE, { videoId: videoId }
+                        ));
+                    }
+                    return result;
+                } catch (e) {
+                    return string.YOUTUBE_PLAYLIST_UNAVAILABLE;
                 }
-                if(url.searchParams.has('v')) 
-                    return [new TrackInfo(
-                        TYPE_YOUTUBE,
-                        { videoId: url.searchParams.get('v') }
-                    )];
             }
-        } catch (e) {}
-        return [];
+            if(ytdl.validateURL(content)) {
+                return [
+                    new TrackInfo(
+                        TYPE_YOUTUBE, 
+                        { videoId: ytdl.getURLVideoID(content) }
+                    )
+                ];
+            }
+            else return string.YOUTUBE_NO_ID;
+        }
+        return string.INVALID_URL;
     }
 }
   
@@ -163,14 +186,14 @@ class TrackInfo {
 
 const music = new Music();
 
-client.on('ready', () => {
+client.on('ready', async () => {
     console.log(`${client.user.username} started at ${new Date().toISOString()}.\n`);
 })
 
-client.on('messageCreate', message => {
+client.on('messageCreate', async message => {
     if(message.author.bot || !message.content.startsWith(string.prefix)) return;
-    const cmd = message.content.slice(1).split(' ')[0];
-    tools.log(`Command "${cmd}" from User ${message.author.tag} received.`, message.guild.id);
+    const cmd = message.content.replace(string.prefix, '').split(' ')[0];
+    tools.log(`Command "${cmd}" from ${message.author.tag} received.`, message.guild.id);
     switch(cmd) {
         case 'join':
             music.join(message);
@@ -179,11 +202,22 @@ client.on('messageCreate', message => {
             music.play(message);
             break;
         case 'skip':
-            const p = message.split(' ');
+            const p = message.content.split(' ');
             if(p.length >= 2) music.skip(message.guild, p[1])
             break;
         case 'dc':
-            music.disconnect(message.guild.id);
+            const connection = voice.getVoiceConnection(message.guild.id);
+            if(connection) {
+                if(connection.joinConfig.channelId === message.member.voice.channel.id) {
+                    music.disconnect(message.guild.id);
+                    message.react('👋');
+                }
+                else {
+                    const name = guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
+                    tools.log(`${message.author.tag} isn't in the voice channel ${name}.`);
+                }
+            }
             break;
         default:
             tools.log(`Invalid command "${cmd}".`, message.guild.id);
