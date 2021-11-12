@@ -244,7 +244,7 @@ client.on('messageCreate', async message => {
             }
             else {
                 if(voice.getVoiceConnection(message.guild.id)) {
-                    const name = guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
                     message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
                 }
                 else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
