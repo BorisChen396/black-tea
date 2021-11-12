@@ -8,7 +8,6 @@ const client = new Discord.Client({ intents: [
     Discord.Intents.FLAGS.GUILDS
 ] });
 
-const auth = require('./auth.json');
 const string = require('./string.json');
 const innertube = require('./innertube.js');
 const tools = require('./tools.js');
