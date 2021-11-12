@@ -243,7 +243,8 @@ client.on('messageCreate', async message => {
                 message.react('👋');
             }
             else {
-                if(voice.getVoiceConnection(message.guild.id)) {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
                     const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
                     message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
                 }
