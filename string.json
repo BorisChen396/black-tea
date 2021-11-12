@@ -1,5 +1,5 @@
 {
-  "prefix": "!!",
+  "prefix": "-",
   "USER_NOT_IN_VOICE_CHANNEL": "You haven't join any voice channel yet.",
   "UNSUPPORTED_COMMAND": "Command is unsupported.",
   "USER_NOT_IN_SAME_VOICE_CHANNEL": "You need to be in $CHANNEL_NAME$ to send commands.",
