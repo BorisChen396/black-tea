@@ -204,7 +204,7 @@ client.on('messageCreate', async message => {
                 const name = message.guild.cache.get(id).name;
                 message.reply(string.BOT_ALREADY_IN_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
             }
-            else if(!member.voice.channel) message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
+            else if(!message.member.voice.channel) message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
             else music.join(message);
             break;
 
