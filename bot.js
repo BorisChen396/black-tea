@@ -233,6 +233,13 @@ const music = new Music();
 
 client.on('ready', async () => {
     console.log(`${client.user.username} started at ${new Date().toISOString()}.`);
+    client.user.setPresence({
+        status: "online",
+        game: {
+            name: "music!",  // The message shown
+            type: "LISTENING" // PLAYING, WATCHING, LISTENING, STREAMING,
+        }
+    });
 })
 
 client.on('messageCreate', async message => {
