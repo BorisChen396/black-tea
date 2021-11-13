@@ -95,7 +95,7 @@ class Music {
         const data = this.data[guild.id].queue[index].data;
         var resource = null;
         if(connection.ping.udp >= 150) tools.log(
-            `High ping detected! Will use low quality if possible. (ping=${connection.ping.udp})`, guild.id);
+            `High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`, guild.id);
         try {
             switch(this.data[guild.id].queue[index].type) {
                 case TYPE_YOUTUBE:
@@ -225,7 +225,6 @@ class Music {
     checkConnectionState(gid) {
         const connection = voice.getVoiceConnection(gid);
         if(!connection) return false;
-        console.log(connection.state.status);
         return connection.state.status === voice.VoiceConnectionStatus.Ready;
     }
 }
