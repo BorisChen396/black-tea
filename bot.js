@@ -232,7 +232,7 @@ class TrackInfo {
 const music = new Music();
 
 client.on('ready', async () => {
-    console.log(`${client.user.username} started at ${new Date().toISOString()}.\n`);
+    console.log(`${client.user.username} started at ${new Date().toISOString()}.`);
 })
 
 client.on('messageCreate', async message => {
