@@ -233,7 +233,7 @@ const music = new Music();
 
 client.on('ready', async () => {
     console.log(`${client.user.username} started at ${new Date().toISOString()}.`);
-    client.user.setActivity('music!', { type: 'LISTENING' });
+    client.user.setActivity(`${string.prefix}play`, { type: 'LISTENING' });
 })
 
 client.on('messageCreate', async message => {
