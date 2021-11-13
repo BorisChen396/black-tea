@@ -90,7 +90,7 @@ class Music {
             this.data[guild.id].player.on('error', (error) => {
                 tools.error('An unexpected error occurred in AudioPlayer.', guild.id);
                 console.error(error);
-                if(!this.skip(guild, index + 1)) this.disconnect(guild.id);
+                if(!this.next(guild)) this.disconnect(guild.id);
             });
         }
         const data = this.data[guild.id].queue[index].data;
