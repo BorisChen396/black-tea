@@ -15,7 +15,7 @@ const tools = require('./tools.js');
 
 const TYPE_YOUTUBE = 'type_youtube';
 
-const HIGH_PING = 200;
+const HIGH_PING = 150;
 
 class Music {
 
