@@ -21,84 +21,95 @@ class Music {
         this.data = {};
     }
     
-    async join(message) {
-        const guild = message.guild;
-        const userChannel = message.member.voice.channel;
-        const connection = voice.joinVoiceChannel({
-            channelId: userChannel.id, 
-            guildId: guild.id, 
-            adapterCreator: guild.voiceAdapterCreator
-        });
-        connection.on(voice.VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
-	        try {
-	    	    await Promise.race([
-			        entersState(connection, voice.VoiceConnectionStatus.Signalling, 5_000),
-		        	entersState(connection, voice.VoiceConnectionStatus.Connecting, 5_000),
-	        	]);
-	        	// Seems to be reconnecting to a new channel - ignore disconnect
-	        } catch (error) {
-	        	// Seems to be a real disconnect which SHOULDN'T be recovered from
-	        	delete this.data[connection.joinConfig.guildId];
-	        	tools.log('Connection destroyed.', connection.joinConfig.guildId);
-	        	connection.destroy();
-	        }
-        });
-        this.data[guild.id] = {
-            player: null,
-            subscription: null,
-            queue: [],
-            index: -1,
-            isPlaying: false
-        };
-        message.react('🎵');
-        tools.log(`Joined ${client.channels.cache.get(userChannel.id).name}.`, guild.id);
+    join(guild, voiceChannel) {
+        if(!guild || !voiceChannel) return false;
+        try {
+            const connection = voice.joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator
+            });
+            connection.on(voice.VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
+                try {
+                    await Promise.race([
+                        entersState(connection, voice.VoiceConnectionStatus.Signalling, 5_000),
+                        entersState(connection, voice.VoiceConnectionStatus.Connecting, 5_000),
+                    ]);
+                    // Seems to be reconnecting to a new channel - ignore disconnect
+                } catch (error) {
+                    // Seems to be a real disconnect which SHOULDN'T be recovered from
+                    delete this.data[connection.joinConfig.guildId];
+                    tools.log('Connection destroyed.', connection.joinConfig.guildId);
+                    connection.destroy();
+                }
+            });
+            this.data[guild.id] = {
+                player: null,
+                subscription: null,
+                queue: [],
+                index: -1,
+                isPlaying: false
+            };
+            tools.log(`Joined ${client.channels.cache.get(voiceChannel.id).name}.`, guild.id);
+            return true;
+        } catch (e) {
+            tools.error('An unexpected error occurred when joining the channel.', guild.id);
+            console.error(e);
+            return false;
+        }
     }
     
-    async play(message) {
-        if(message.content.split(' ').length < 2) return;
-        const url = message.content.split(' ')[1];
-        const list = await this.parseUrl(message.content.split(' ')[1]);
-        if(!Array.isArray(list)) {
-            message.reply(list);
-            tools.log(`Failed to add the requested item from ${message.author.tag}. (url=${url})`, message.guild.id);
-            return;
+    async play(guild, url) {
+        if(!this.data[guild.id] || !guild || !url) return false;
+        const list = await this.parseUrl(url);
+        if(!list) {
+            tools.error(`Failed to resolve the requested item. (url=${url})`, guild.id);
+            return false;
         }
+        const autoplay = this.data[guild.id].queue.length == 0;
         for(var i in list) {
-            this.data[message.guild.id].queue.push(list[i]);
-            if(this.data[message.guild.id].queue.length == 1) this.skip(message.guild, 0);
+            this.data[guild.id].queue.push(list[i]);
         }
-        message.reply(string.ITEMS_ADDED
-            .replace('$NUMBER$', list.length)
-            .replace('$QUEUE_LENGTH$', this.data[message.guild.id].queue.length)
-        );
+        if(autoplay && this.data[guild.id].queue.length > 0) await this.skip(guild, 0);
+        return true;
     }
     
     async skip(guild, index) {
-        if(!guild || index == null || isNaN(index) || this.data[guild.id].queue.length <= index || index < 0) return;
+        if(!this.data[guild.id] || !guild || isNaN(index) || index >= this.data[guild.id].queue.length || index < 0) {
+            return false;
+        }
         const connection = voice.getVoiceConnection(guild.id);
-        if(!connection) return;
+        if(!connection) return false;
         if(!this.data[guild.id].player) {
             this.data[guild.id].player = voice.createAudioPlayer();
             this.data[guild.id].player.on('stateChange', (oldState, newState) => {
                 if(oldState.status !== voice.AudioPlayerStatus.Idle && newState.status === voice.AudioPlayerStatus.Idle) {
-                    this.skip(guild, this.data[guild.id].index + 1);
+                    this.next(guild);
                 }
             });
             this.data[guild.id].player.on('error', (error) => {
-                this.disconnect(guild.id);
+                tools.error('An unexpected error occurred in AudioPlayer.', guild.id);
+                console.error(error);
+                if(!this.skip(guild, index + 1)) this.disconnect(guild.id);
             });
         }
         const data = this.data[guild.id].queue[index].data;
         var resource = null;
-        switch(this.data[guild.id].queue[index].type) {
-            case TYPE_YOUTUBE:
-                resource = voice.createAudioResource(
-                    ytdl(`https://youtu.be/${data.videoId}`, {
-                        filter: 'audioonly',
-                        quality: 'highestaudio'
-                    })
-                );
-                break;
+        try {
+            switch(this.data[guild.id].queue[index].type) {
+                case TYPE_YOUTUBE:
+                    resource = voice.createAudioResource(
+                        ytdl(`https://youtu.be/${data.videoId}`, {
+                            filter: 'audioonly',
+                            quality: 'highestaudio'
+                        })
+                    );
+                    break;
+            }
+        } catch (e) {
+            tools.error('An unexpected error occurred when creating the resource.', guild.id);
+            console.error(e);
+            return false;
         }
         if(resource) {
             this.data[guild.id].subscription = connection.subscribe(this.data[guild.id].player);
@@ -106,36 +117,59 @@ class Music {
             this.data[guild.id].index = index;
             tools.log(`Playing #${index}. ${JSON.stringify(this.data[guild.id].queue[index])}`, guild.id)
         }
+        else return false;
+        return true;
     }
 
-    async pause(message) {
-        if(this.data[message.guild.id] && this.data[message.guild.id].player) {
-            this.data[message.guild.id].player.pause();
-            message.react('⏸️');
-        }
-        else {
-            message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+    async pause(gid) {
+        if(!gid || !this.data[gid] || !this.data[gid].player) return false;
+        try {
+            this.data[gid].player.pause();
+        } catch (e) {
+            tools.error('An unexpected error occurred when pausing the player.', gid);
+            console.error(e);
+            return false;
         }
     }
 
-    async resume(message) {
-        if(this.data[message.guild.id] && this.data[message.guild.id].player) {
-            this.data[message.guild.id].player.unpause();
-            message.react('▶️');
+    async resume(gid) {
+        if(!gid || !this.data[gid] || !this.data[gid].player) return false;
+        try {
+            this.data[gid].player.unpause();
+        } catch (e) {
+            tools.error('An unexpected error occurred when pausing the player.', gid);
+            console.error(e);
+            return false;
         }
-        else {
-            message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
-        }
+    }
+
+    async next(guild) {
+        if(!this.data[guild.id]) return false;
+        return await this.skip(guild, this.data[guild.id].index + 1);
+    }
+
+    async prev(guild) {
+        if(!this.data[guild.id]) return false;
+        return await this.skip(guild, this.data[guild.id].index - 1);
     }
     
     async disconnect(gid) {
+        if(!gid) return false;
         const connection = voice.getVoiceConnection(gid);
         if(connection) {
             tools.log(`Disconnecting from ${client.channels.cache.get(connection.joinConfig.channelId).name}.`, gid);
             if(this.data[gid].subscription) this.data[gid].subscription.unsubscribe();
             if(this.data[gid].player) this.data[gid].player.stop();
-            connection.disconnect();
+            try {
+                connection.disconnect();
+                return true;
+            } catch (e) {
+                tools.error('An unexpected error occurred when disconnecting.', gid);
+                console.error(e);
+                return false;
+            }
         }
+        else return false;
     }
     
     async disconnectAll() {
@@ -147,7 +181,8 @@ class Music {
         try {
             hostname = new URL(content).hostname;
         } catch (e) {
-            return string.INVALID_URL;
+            console.error(e);
+            return;
         }
         if(hostname === 'youtu.be') hostname = 'www.youtube.com';
         if(hostname.includes('youtube.com')) {
@@ -163,7 +198,8 @@ class Music {
                     }
                     return result;
                 } catch (e) {
-                    return string.YOUTUBE_PLAYLIST_UNAVAILABLE;
+                    console.error(e);
+                    return;
                 }
             }
             if(ytdl.validateURL(content)) {
@@ -174,9 +210,15 @@ class Music {
                     )
                 ];
             }
-            else return string.YOUTUBE_NO_ID;
         }
-        return string.INVALID_URL;
+        return;
+    }
+    
+    checkUserVoiceChannel(member) {
+        if(!member) return false;
+        const connection = voice.getVoiceConnection(member.guild.id);
+        if(!connection || !connection.joinConfig.channelId || !member.voice.channel) return false;
+        return connection.joinConfig.channelId === member.voice.channel.id;
     }
 }
   
@@ -196,6 +238,8 @@ client.on('ready', async () => {
 client.on('messageCreate', async message => {
     if(message.author.bot || !message.content.startsWith(string.prefix)) return;
     const cmd = message.content.replace(string.prefix, '').split(' ')[0];
+    const params = message.content.split(' ');
+    params.shift();
     tools.log(`Command "${cmd}" from ${message.author.tag} received.`, message.guild.id);
     switch(cmd) {
         case 'join':
@@ -205,42 +249,109 @@ client.on('messageCreate', async message => {
                 message.reply(string.BOT_ALREADY_IN_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
             }
             else if(!message.member.voice.channel) message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
-            else music.join(message);
+            else if(music.join(message.guild, message.member.voice.channel)) message.react('🎶');
+            else message.reply(string.FAILED_TO_JOIN_VOICE_CHANNEL);
             break;
 
         case 'play':
-            if(checkUserVoiceChannel(message.member)) music.play(message);
-            else if(message.member.voice.channel) {
-                await music.join(message);
-                music.play(message);
+            if(params.length < 1) {
+                message.reply(string.MISSING_PARAMS);
+                return;
+            }
+            if(message.member.voice.channel && !voice.getVoiceConnection(message.guild.id))
+                if(!music.join(message.guild, message.member.voice.channel)) {
+                    message.reply(string.FAILED_TO_JOIN_VOICE_CHANNEL);
+                    return;
+                }
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(await music.play(message.guild, params[0])) message.react('✅');
+                else message.reply(string.FAILED_TO_PLAY_ITEM);
             }
             else message.reply(string.USER_NOT_IN_VOICE_CHANNEL);
             break;
 
         case 'skip':
-            const p = message.content.split(' ');
-            if(p.length >= 2) {
-                if(checkUserVoiceChannel(message.member)) music.skip(message.guild, p[1]);
-                else {
-                    const connection = voice.getVoiceConnection(message.guild.id);
-                    if(connection) message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL);
-                    else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            if(params.length < 1) {
+                message.reply(string.MISSING_PARAMS);
+                return;
+            }
+            if(music.checkUserVoiceChannel(message.member))
+                if(await music.skip(message.guild, params[0])) message.react('✅');
+                else message.reply(string.FAILED_TO_SKIP_TO_ITEM);
+            else {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
                 }
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
             }
             break;
 
         case 'pause':
-            if(checkUserVoiceChannel(message.member)) music.pause(message);
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(music.pause(message.guild.id)) message.react('✅');
+                else message.reply(string.FAILED_TO_PAUSE_PLAYER);
+            }
+            else {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
+                }
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            }
             break;
 
         case 'resume':
-            if(checkUserVoiceChannel(message.member)) music.resume(message);
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(music.resume(message.guild.id)) message.react('✅');
+                else message.reply(string.FAILED_TO_RESUME_PLAYER);
+            }
+            else {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
+                }
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            }
             break;
 
+        case 'next':
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(music.next(message.guild.id)) message.react('✅');
+                else message.reply(string.FAILED_TO_SKIP_TO_NEXT);
+            }
+            else {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
+                }
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            }
+            break;
+
+            case 'previous':
+                if(music.checkUserVoiceChannel(message.member)) {
+                    if(music.prev(message.guild.id)) message.react('✅');
+                    else message.reply(string.FAILED_TO_SKIP_TO_PREV);
+                }
+                else {
+                    const connection = voice.getVoiceConnection(message.guild.id);
+                    if(connection) {
+                        const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                        message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
+                    }
+                    else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+                }
+                break;
+
         case 'dc':
-            if(checkUserVoiceChannel(message.member)) {
-                music.disconnect(message.guild.id);
-                message.react('👋');
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(music.disconnect(message.guild.id)) message.react('👋');
+                else message.reply(string.FAILED_TO_DISCONNECT_VOICE_CHANNEL);
             }
             else {
                 const connection = voice.getVoiceConnection(message.guild.id);
@@ -258,12 +369,6 @@ client.on('messageCreate', async message => {
             break;
     }
 });
-
-function checkUserVoiceChannel(member) {
-    const connection = voice.getVoiceConnection(member.guild.id);
-    if(!connection || !connection.joinConfig.channelId || !member.voice.channel) return false;
-    return connection.joinConfig.channelId === member.voice.channel.id;
-}
 
 var isExiting = false;
 
