@@ -84,7 +84,7 @@ class Music {
             this.data[guild.id].player = voice.createAudioPlayer();
             this.data[guild.id].player.on('stateChange', (oldState, newState) => {
                 if(oldState.status !== voice.AudioPlayerStatus.Idle && newState.status === voice.AudioPlayerStatus.Idle) {
-                    this.next(guild);
+                    if(!this.next(guild)) this.disconnect(guild.id);
                 }
             });
             this.data[guild.id].player.on('error', (error) => {
