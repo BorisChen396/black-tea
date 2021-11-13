@@ -100,10 +100,10 @@ class Music {
                 case TYPE_YOUTUBE:
                     resource = voice.createAudioResource(
                         ytdl(`https://youtu.be/${data.videoId}`, {
-                            filter: 'audioonly',
-                            quality: 'highestaudio'
-                        })
-                    );
+                            quality: 251
+                        }), {
+                            inputType: voice.StreamType.WebmOpus
+                        });
                     break;
             }
         } catch (e) {
