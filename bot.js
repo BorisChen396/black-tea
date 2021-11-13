@@ -15,6 +15,8 @@ const tools = require('./tools.js');
 
 const TYPE_YOUTUBE = 'type_youtube';
 
+const HIGH_PING = 200;
+
 class Music {
 
     constructor () {
@@ -94,14 +96,14 @@ class Music {
         }
         const data = this.data[guild.id].queue[index].data;
         var resource = null;
-        if(connection.ping.udp >= 150) tools.log(
+        if(connection.ping.udp >= HIGH_PING) tools.log(
             `High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`, guild.id);
         try {
             switch(this.data[guild.id].queue[index].type) {
                 case TYPE_YOUTUBE:
                     resource = voice.createAudioResource(
                         ytdl(`https://youtu.be/${data.videoId}`, {
-                            quality: connection.ping.udp >= 150 ? 250 : 251
+                            quality: connection.ping.udp >= HIGH_PING ? 250 : 251
                         }), {
                             inputType: voice.StreamType.WebmOpus
                         });
