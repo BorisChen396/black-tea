@@ -121,7 +121,6 @@ class Music {
         if(highPing) tools.log(
             `High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`, guild.id);
         const resource = await this.data[guild.id].queue[index].createAudioResource(highPing);
-        console.log(resource);
         if(resource) {
             this.data[guild.id].subscription.player.play(resource);
             this.data[guild.id].index = index;
