@@ -12,7 +12,7 @@ const track = require('./track.js');
 const tools = require('./tools.js');
 
 const string = require('./string.json');
-const { validateURL, getURLVideoID, getInfo } = require('ytdl-core');
+const { validateURL, getURLVideoID } = require('ytdl-core');
 
 const HIGH_PING = 150;
 
@@ -105,9 +105,9 @@ class Music {
         const connection = voice.getVoiceConnection(guild.id);
         if(!this.data[guild.id].subscription) {
             const player = voice.createAudioPlayer();
-            player.on('stateChange', (oldState, newState) => {
+            player.on('stateChange', async (oldState, newState) => {
                 if(oldState.status !== voice.AudioPlayerStatus.Idle && newState.status === voice.AudioPlayerStatus.Idle) {
-                    if(!this.next(guild)) this.disconnect(guild.id);
+                    if(!await this.next(guild)) this.disconnect(guild.id);
                 }
             });
             player.on('error', (error) => {
@@ -117,11 +117,11 @@ class Music {
             });
             this.data[guild.id].subscription = connection.subscribe(player);
         }
-        const data = this.data[guild.id].queue[index].data;
         const highPing = connection.ping.udp >= HIGH_PING;
         if(highPing) tools.log(
             `High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`, guild.id);
-        var resource = await this.data[guild.id].queue[index].createAudioResource(highPing);
+        const resource = await this.data[guild.id].queue[index].createAudioResource(highPing);
+        console.log(resource);
         if(resource) {
             this.data[guild.id].subscription.player.play(resource);
             this.data[guild.id].index = index;

@@ -58,7 +58,10 @@ class Track {
 			};
 			subprocess.once('spawn', () => {
                 voice.demuxProbe(stream)
-                    .then((probe) => resolve(voice.createAudioResource(probe.stream, { metadata: this, inputType: probe.type })))
+                    .then((probe) => {
+                        if(probe.type !== voice.StreamType.WebmOpus) console.log('Not using webm opus stream!')
+                        resolve(voice.createAudioResource(probe.stream, { metadata: this, inputType: probe.type }));
+                    })
                     .catch(onError);
                 })
                 .catch(onError);
