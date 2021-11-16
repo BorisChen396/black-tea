@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const Discord = require('discord.js');
 const voice = require('@discordjs/voice');
+const ytdl = require('youtube-dl-exec');
 const ytpl = require('ytpl');
 const client = new Discord.Client({ intents: [
     Discord.Intents.FLAGS.GUILD_MESSAGES, 
@@ -12,7 +13,6 @@ const track = require('./track.js');
 const tools = require('./tools.js');
 
 const string = require('./string.json');
-const { validateURL, getURLVideoID } = require('ytdl-core');
 
 const HIGH_PING = 150;
 
@@ -23,18 +23,35 @@ class Music {
     }
     
     join(guild, messageChannel, voiceChannel) {
-        if(!guild || !voiceChannel) return false;
-        try {
+        return new Promise(async (resolve, reject) => {
+            if(!guild || !voiceChannel) {
+                reject();
+                return;
+            }
+            const permissions = guild.me.permissionsIn(voiceChannel);
+            if(!permissions.has(Discord.Permissions.FLAGS.CONNECT)) {
+                reject('Permission denied.');
+                return;
+            }
             const connection = voice.joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: guild.id,
                 adapterCreator: guild.voiceAdapterCreator
             });
+            try {
+                await Promise.race([
+                        voice.entersState(connection, voice.VoiceConnectionStatus.Ready, 10000),
+                ]);
+            } catch (e) {
+                connection.destroy();
+                reject('Connection timeout.');
+                return;
+            }
             connection.on(voice.VoiceConnectionStatus.Disconnected, async () => {
                 try {
                     await Promise.race([
-                        entersState(connection, voice.VoiceConnectionStatus.Signalling, 5_000),
-                        entersState(connection, voice.VoiceConnectionStatus.Connecting, 5_000),
+                        voice.entersState(connection, voice.VoiceConnectionStatus.Signalling, 5000),
+                        voice.entersState(connection, voice.VoiceConnectionStatus.Connecting, 5000),
                     ]);
                     // Seems to be reconnecting to a new channel - ignore disconnect
                 } catch (error) {
@@ -51,51 +68,59 @@ class Music {
                 index: -1
             };
             tools.log(`Joined ${client.channels.cache.get(voiceChannel.id).name}.`, guild.id);
-            return true;
-        } catch (e) {
-            tools.error('An unexpected error occurred when joining the channel.', guild.id);
-            console.error(e);
-            return false;
-        }
+            resolve();
+        });
     }
     
-    async play(guild, url) {
-        if(!this.data[guild.id] || !guild || !url) return false;
-        const autoplay = this.data[guild.id].queue.length == 0;
-        var hostname;
-        try {
-            hostname = new URL(url).hostname;
-        } catch (e) {
-            console.error(e);
-            return false;
-        }
-        if(hostname === 'youtu.be') hostname = 'www.youtube.com';
-        if(hostname.includes('youtube.com')) {
+    enqueue(guild, url) {
+        return new Promise(async (resolve, reject) => {
             try {
-                const ids = [];
-                if(ytpl.validateID(url)) {
-                    const list = await ytpl(url);
-                    for(var i in list.items) ids.push(list.items[i].id);
-                }
-                else if(validateURL(url)) {
-                    ids.push(getURLVideoID(url));
-                }
-
-                for(var i in ids) {
-                    this.data[guild.id].queue.push(
-                        await track.Track.from(
-                            track.TrackType.YOUTUBE,
-                            { videoId: ids[i] }
-                        )
-                    );
-                }
+                url = new URL(url);
             } catch (e) {
-                console.error(e);
+                tools.error(`Invalid url. (url=${url})`)
+                reject('Invalid url.');
                 return;
             }
-        }
-        if(autoplay && this.data[guild.id].queue.length > 0) await this.skip(guild, 0);
-        return true;
+            const addQueue = [];
+            if((url.hostname.includes('youtube.com') || url.hostname === 'youtu.be') && 
+                url.searchParams.has('list')) {
+                    try {
+                        const response = await ytpl(url.toString());
+                        for(var i in response.items) {
+                            addQueue.push(`https://youtu.be/${response.items[i].id}`);
+                        }
+                    } catch (e) {
+                        tools.error('Failed to get the playlist info.', guild.id);
+                        console.error(e);
+                        reject(e);
+                        return;
+                    }
+            }
+            else {
+                try {
+                    const response = await ytdl(url.toString(), {
+                        dumpSingleJson: true,
+                        noWarnings: true
+                    });
+                    if(response._type === 'playlist') {
+                        for(var i in response.entries) {
+                            addQueue.push(response.entries[i].webpage_url);
+                        }
+                    }
+                    else addQueue.push(url.toString());
+                } catch (e) {
+                    tools.error('Failed to get the url info.', guild.id);
+                    console.error(e);
+                    reject('Failed to get the url info.');
+                    return;
+                }
+            }
+            for(var i in addQueue) {
+                this.data[guild.id].queue.push(new track.Track(addQueue[i]));
+                if(this.data[guild.id].queue.length == 1) this.skip(guild, 0);
+            }
+            resolve();
+        });
     }
     
     async skip(guild, index) {
@@ -105,9 +130,9 @@ class Music {
         const connection = voice.getVoiceConnection(guild.id);
         if(!this.data[guild.id].subscription) {
             const player = voice.createAudioPlayer();
-            player.on('stateChange', async (oldState, newState) => {
+            player.on('stateChange', (oldState, newState) => {
                 if(oldState.status !== voice.AudioPlayerStatus.Idle && newState.status === voice.AudioPlayerStatus.Idle) {
-                    if(!await this.next(guild)) this.disconnect(guild.id);
+                    this.next(guild)
                 }
             });
             player.on('error', (error) => {
@@ -161,15 +186,25 @@ class Music {
         if(!this.data[guild.id]) return false;
         return await this.skip(guild, this.data[guild.id].index - 1);
     }
+
+    clear(gid) {
+        if(!this.data[gid]) return false;
+        if(this.data[gid].subscription) {
+            this.data[gid].subscription.player.stop();
+            this.data[gid].subscription.unsubscribe();
+            delete this.data[gid].subscription;
+        }
+        this.data[gid].index = -1;
+        this.data[gid].queue = [];
+        return true;
+    }
     
     disconnect(gid) {
         if(!gid || !this.checkConnectionState(gid)) return false;
         const connection = voice.getVoiceConnection(gid);
         if(connection) {
             tools.log(`Disconnecting from ${client.channels.cache.get(connection.joinConfig.channelId).name}.`, gid);
-            if(this.data[gid].subscription) this.data[gid].subscription.player.stop();
-            if(this.data[gid].subscription) this.data[gid].subscription.unsubscribe();
-            this.data[gid].subscription = null;
+            this.clear(gid);
             try {
                 connection.disconnect();
                 return true;
@@ -220,8 +255,9 @@ client.on('messageCreate', async message => {
                 return;
             }
             if(!voice.getVoiceConnection(message.guild.id)) {
-                if(music.join(message.guild, message.channel, message.member.voice.channel)) message.react('🎶');
-                else message.reply(string.FAILED_TO_JOIN_VOICE_CHANNEL);
+                music.join(message.guild, message.channel, message.member.voice.channel)
+                    .then(value => message.react('🎶'))
+                    .catch(error => message.reply(`${string.FAILED_TO_JOIN_VOICE_CHANNEL} ${error}`));
             }
             else {
                 const id = voice.getVoiceConnection(message.guild.id).joinConfig.channelId;
@@ -243,34 +279,29 @@ client.on('messageCreate', async message => {
                 return;
             }
             if(!voice.getVoiceConnection(message.guild.id))
-                if(!music.join(message.guild, message.channel, message.member.voice.channel)) {
-                    message.reply(string.FAILED_TO_JOIN_VOICE_CHANNEL);
+                try {
+                    await music.join(message.guild, message.channel, message.member.voice.channel);
+                } catch (e) {
+                    message.reply(`${string.FAILED_TO_JOIN_VOICE_CHANNEL} ${e}`);
                     return;
                 }
+            const addItem = () => {
+                if(music.checkUserVoiceChannel(message.member)) {
+                    message.react('⌛');
+                    music.enqueue(message.guild, params[0])
+                        .then(() => message.react('✅'))
+                        .catch(error => message.reply(`${string.FAILED_TO_PLAY_ITEM}\n${error}`));
+                }
+                else {
+                    const id = voice.getVoiceConnection(message.guild.id).joinConfig.channelId;
+                    const name = message.guild.channels.cache.get(id).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
+                }
+            };
             if(voice.getVoiceConnection(message.guild.id).state.status === voice.VoiceConnectionStatus.Ready) {
-                if(music.checkUserVoiceChannel(message.member)) {
-                    message.react('⌛');
-                    if(await music.play(message.guild, params[0])) message.react('✅');
-                    else message.reply(string.FAILED_TO_PLAY_ITEM);
-                }
-                else {
-                    const id = voice.getVoiceConnection(message.guild.id).joinConfig.channelId;
-                    const name = message.guild.channels.cache.get(id).name;
-                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
-                }
+                addItem();
             }
-            voice.getVoiceConnection(message.guild.id).on(voice.VoiceConnectionStatus.Ready, async () => {
-                if(music.checkUserVoiceChannel(message.member)) {
-                    message.react('⌛');
-                    if(await music.play(message.guild, params[0])) message.react('✅');
-                    else message.reply(string.FAILED_TO_PLAY_ITEM);
-                }
-                else {
-                    const id = voice.getVoiceConnection(message.guild.id).joinConfig.channelId;
-                    const name = message.guild.channels.cache.get(id).name;
-                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name));
-                }
-            })
+            voice.getVoiceConnection(message.guild.id).on(voice.VoiceConnectionStatus.Ready, addItem);
             break;
 
         case 'skip':
@@ -336,20 +367,36 @@ client.on('messageCreate', async message => {
             }
             break;
 
-            case 'prev':
-                if(music.checkUserVoiceChannel(message.member)) {
-                    if(await music.prev(message.guild)) message.react('✅');
-                    else message.reply(string.FAILED_TO_SKIP_TO_PREV);
+        case 'prev':
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(await music.prev(message.guild)) message.react('✅');
+                else message.reply(string.FAILED_TO_SKIP_TO_PREV);
+            }
+            else {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
                 }
-                else {
-                    const connection = voice.getVoiceConnection(message.guild.id);
-                    if(connection) {
-                        const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
-                        message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
-                    }
-                    else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            }
+            break;
+
+        case 'stop':
+        case 'clear':
+            if(music.checkUserVoiceChannel(message.member)) {
+                if(await music.clear(message.guild.id)) message.react('✅');
+                else message.reply(string.FAILED_TO_CLEAR_QUEUE);
+            }
+            else {
+                const connection = voice.getVoiceConnection(message.guild.id);
+                if(connection) {
+                    const name = message.guild.channels.cache.get(connection.joinConfig.channelId).name;
+                    message.reply(string.USER_NOT_IN_SAME_VOICE_CHANNEL.replace('$CHANNEL_NAME$', name), message.guild.id);
                 }
-                break;
+                else message.reply(string.BOT_NOT_IN_VOICE_CHANNEL);
+            }
+            break;
 
         case 'dc':
             if(music.checkUserVoiceChannel(message.member)) {

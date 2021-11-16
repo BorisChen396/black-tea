@@ -17,5 +17,6 @@
   "FAILED_TO_SKIP_TO_NEXT": "Unable to skip to the next item.",
   "FAILED_TO_SKIP_TO_PREV": "Unable to skip to the previous item.",
   "FAILED_TO_PAUSE_PLAYER": "Unable to pause the player.",
-  "FAILED_TO_RESUME_PLAYER": "Unable to resume the player."
+  "FAILED_TO_RESUME_PLAYER": "Unable to resume the player.",
+  "FAILED_TO_CLEAR_QUEUE": "Unable to clear the queue."
 }
