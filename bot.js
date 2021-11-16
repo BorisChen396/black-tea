@@ -14,7 +14,7 @@ const tools = require('./tools.js');
 
 const string = require('./string.json');
 
-const HIGH_PING = 150;
+const HIGH_PING = 200;
 
 class Music {
 
