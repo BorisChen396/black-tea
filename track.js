@@ -12,14 +12,10 @@ class Track {
         return new Promise((resolve, reject) => {
             const lowQualityParams = {
                 o: '-',
-                q: '',
-                r: '100K',
                 f: 'worstaudio[ext=webm]/worst[ext=webm]/worstaudio/worst'
             };
             const highQualityParams = {
                 o: '-',
-                q: '',
-                r: '100K',
                 f: 'bestaudio[ext=webm]/best[ext=webm]/bestaudio/best'
             };
             const process = ytdl.raw(

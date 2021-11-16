@@ -1,16 +1,15 @@
 {
   "name": "black-tea",
   "version": "1.0.0",
-  "description": "",
+  "description": "A Discord music bot.",
   "main": "bot.js",
   "scripts": {
-    "start": "node ./bot.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node ./bot.js"
   },
   "engines": {
     "node": "16.x"
   },
-  "author": "",
+  "author": "Azure Dragon",
   "license": "ISC",
   "dependencies": {
     "@discordjs/opus": "^0.5.3",
