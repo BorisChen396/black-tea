@@ -124,7 +124,7 @@ class Player {
         const connection = voice.getVoiceConnection(this.messageChannel.guild.id);
         const nextTrack = this.queue.shift();
         const highPing = connection.ping.udp >= HIGH_PING;
-        if(highPing) console.log(`${guild.id}: High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`);
+        if(highPing) console.log(`${this.messageChannel.guild.id}: High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`);
         try {
             const resource = await nextTrack.createAudioResource(highPing);
             this.subscription.player.play(resource);
