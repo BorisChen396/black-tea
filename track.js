@@ -4,8 +4,9 @@ const ytdl = require('youtube-dl-exec');
 const voice = require('@discordjs/voice');
 
 class Track {
-    constructor(url) {
+    constructor(url, title) {
         this.url = url;
+        this.title = title;
     }
 
     createAudioResource(useLowQuality) {
