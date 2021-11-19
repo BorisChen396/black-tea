@@ -41,6 +41,7 @@ client.on('messageCreate', async message => {
                 });
             break;
 
+        case 'p':
         case 'play':
         case 'add':
             const tracks = [];
@@ -62,9 +63,9 @@ client.on('messageCreate', async message => {
                     break;
                 }
             message.react('⌛');
-            try {
-                if(ytpl.validateID(params[0])) {
-                    const response = await ytpl(params[0]).json();
+            if(ytpl.validateID(params[0])) {
+                try {
+                    const response = await ytpl(params[0]);
                     for(var i in response.items) {
                         const track = new Track(
                             `https://youtu.be/${response.items[i].id}`,
@@ -72,8 +73,16 @@ client.on('messageCreate', async message => {
                         );
                         tracks.push(track);
                     }
+                } catch (e) {
+                    const errorMessage = new Message(MessageType.Error, `Failed to add the playlist from ${params[0]}.`);
+                    errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', e.toString());
+                    errorMessage.addData('MESSAGE_FIELD_TITLE_REQUESTED_BY', message.author.tag);
+                    message.reply({embeds: [ errorMessage.createMessage() ]});
+                    break;
                 }
-                else {
+            }
+            else {
+                try {
                     const response = await ytdl(params[0], {
                         dumpSingleJson: true,
                         noWarnings: true
@@ -88,13 +97,13 @@ client.on('messageCreate', async message => {
                         }
                     }
                     else tracks.push(new Track(params[0], response.title));
+                } catch (e) {
+                    const errorMessage = new Message(MessageType.Error, `Failed to get info from ${params[0]}.`);
+                    errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', e.stderr ? e.stderr : e.toString());
+                    errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, message.author.tag);
+                    message.reply({embeds: [ errorMessage.createMessage() ]});
+                    break;
                 }
-            } catch (e) {
-                const errorMessage = new Message(MessageType.Error, `Failed to get info from ${params[0]}.`);
-                if(e.stderr) errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', e.stderr);
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, message.author.tag);
-                message.reply({embeds: [ errorMessage.createMessage() ]});
-                break;
             }
             for(var i in tracks) data[message.guild.id].player.enqueue(tracks[i]);
             message.react('✅');

@@ -20,26 +20,29 @@ class Message {
     }
     
     createMessage() {
-        const message = new MessageEmbed();
-        message.setDescription(this.content);
+        const messageObject = {};
+        messageObject.description = this.content;
+        messageObject.fields = [];
         if(this.data) {
             const dataKeys = Object.keys(this.data);
             for(var i in dataKeys) {
-                const title = string[dataKeys[i]] ? string[dataKeys[i]] : dataKeys[i];
-                message.addField(title, this.data[dataKeys[i]]);
+                const field = {};
+                field.name = string[dataKeys[i]] ? string[dataKeys[i]] : dataKeys[i];
+                field.value = this.data[dataKeys[i]];
+                messageObject.fields.push(field);
             }
         }
         switch(this.type) {
             case MessageType.Warning:
-                message.setTitle(string.MESSAGE_TITLE_WARNING)
-                    .setColor('#FEDE00');
+                messageObject.title = string.MESSAGE_TITLE_WARNING;
+                messageObject.color = 0xfcd734;
                 break;
             case MessageType.Error:
-                message.setTitle(string.MESSAGE_TITLE_ERROR)
-                    .setColor('#FF0000');
+                messageObject.title = string.MESSAGE_TITLE_ERROR;
+                messageObject.color = 0xff0000;
                 break;
         }
-        return message;
+        return messageObject;
     }
 }
 

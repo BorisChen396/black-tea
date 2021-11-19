@@ -131,6 +131,9 @@ class Player {
 			this.queueLock = false;
 		} catch (error) {
 			// If an error occurred, try the next item of the queue instead
+            const errorMessage = new Message(MessageType.Warning, `Failed to play item ${nextTrack.title ? nextTrack.title : nextTrack.url}.`);
+            errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
+            this.messageChannel.send({embeds: [ errorMessage.createMessage() ]});
 			this.queueLock = false;
 			return await this.next();
 		}
