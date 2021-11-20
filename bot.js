@@ -16,57 +16,26 @@ const { Message, MessageType } = require('./message.js');
 
 const string = require('./string.json');
 
+const permissions = [
+    'VIEW_CHANNEL',
+    'SEND_MESSAGES',
+    'ADD_REACTIONS',
+    'CONNECT',
+    'SPEAK',
+    'USE_VAD'
+];
 const data = {};
 
-client.on('ready', async () => {
-    client.user.setActivity(`/play`, { type: 'LISTENING' });
-    client.guilds.cache.forEach((value, key, map) => {
-        data[key] = {};
-        value.commands.set([
-            {
-                name: 'join',
-                description: string.COMMAND_DESCRIPTION_JOIN
-            },
-            {
-                name: 'play',
-                description: string.COMMAND_DESCRIPTION_PLAY,
-                options: [{
-                    name: 'track',
-                    type: 'STRING',
-                    description: 'The URL of the track.',
-                    required: true
-                }]
-            },
-            {
-                name: 'queue',
-                description: string.COMMAND_DESCRIPTION_QUEUE
-            },
-            {
-                name: 'pause',
-                description: string.COMMAND_DESCRIPTION_PAUSE
-            },
-            {
-                name: 'resume',
-                description: string.COMMAND_DESCRIPTION_RESUME
-            },
-            {
-                name: 'next',
-                description: string.COMMAND_DESCRIPTION_NEXT
-            },
-            {
-                name: 'stop',
-                description: string.COMMAND_DESCRIPTION_STOP
-            },
-            {
-                name: 'dc',
-                description: string.COMMAND_DESCRIPTION_DISCONNECT
-            }
-        ]);
-    });
-    console.log(`${client.user.username} started at ${client.readyAt.toISOString()}.`);
-})
-
-client.on('guildCreate', guild => {
+async function setServerData(guild) {
+    console.log(`Checking my permissions in server ${guild.name}. (${guild.id})`);
+    if(!permissions.every(e => guild.me.permissions.toArray().includes(e))) {
+        console.error(`Permission rejected. Leaving server. (${guild.id})`);
+        const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_CHECK_PERMISSION);
+        await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
+        await guild.leave();
+        return;
+    }
+    console.log(`Setting data for server ${guild.name}. (${guild.id})`);
     data[guild.id] = {};
     guild.commands.set([
         {
@@ -107,13 +76,27 @@ client.on('guildCreate', guild => {
             name: 'dc',
             description: string.COMMAND_DESCRIPTION_DISCONNECT
         }
-    ]);
-    console.log(`Joined server ${guild.name}(${guild.id}).`);
+    ]).catch(async error => {
+        console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${e}`);
+        const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_SET_COMMANDS);
+        errorMessage.addData(string.MESSAGE_FIELD_TITLE_DETAILS, error.toString());
+        await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
+        await guild.leave();
+    });
+}
+
+client.on('ready', async () => {
+    console.log(`${client.user.username} started at ${client.readyAt.toISOString()}.`);
+    client.user.setActivity(`/play`, { type: 'LISTENING' });
+    client.guilds.cache.forEach(async value => await setServerData(value));
+})
+
+client.on('guildCreate', async guild => {
+    await setServerData(guild);
 })
 
 client.on('guildDelete', guild => {
     delete data[guild.id];
-    console.log(`Leaved server ${guild.name}(${guild.id}).`);
 });
 
 client.on('interactionCreate', async interaction => {
