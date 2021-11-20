@@ -92,7 +92,11 @@ async function setServerData(guild) {
 client.on('ready', async () => {
     console.log(`${client.user.username} started at ${client.readyAt.toISOString()}.`);
     client.user.setActivity(`/play`, { type: 'LISTENING' });
-    client.guilds.cache.forEach(async value => await setServerData(value));
+    client.guilds.cache.forEach(async value => {
+        const message = new Message(MessageType.Info, `Bot ${client.user.username} is back! >ωO`);
+        value.systemChannel.send({embeds:[message.createMessage()]}).catch(e => console.log(e));
+        await setServerData(value);
+    });
 })
 
 client.on('guildCreate', async guild => {
@@ -345,12 +349,13 @@ client.on('interactionCreate', async interaction => {
 });
 
 var isExiting = false;
-const onExit = exit => {
+const onExit =  exit => {
     if(isExiting) return;
     isExiting = true;
     client.guilds.cache.forEach((value, key, map) => {
-        if(data[key] && data[key].player) data[key].player.stop();
+        if(data[key] && data[key].player) data[key].player.disconnect();
     });
+    console.log('Shuting down...');
     if(exit) process.exit();
 };
 process.on('SIGINT', () => onExit(true));
