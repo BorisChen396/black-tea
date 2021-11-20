@@ -1,8 +1,10 @@
-const { MessageEmbed } = require('discord.js');
+const { Util } = require('discord.js');
 
 const string = require('./string.json');
 
 const MessageType = {
+    Info: 'type_info',
+    Success: 'type_success',
     Warning: 'type_warning',
     Error: 'type_error'
 }
@@ -33,13 +35,21 @@ class Message {
             }
         }
         switch(this.type) {
+            case MessageType.Info:
+                messageObject.title = string.MESSAGE_TITLE_INFO;
+                messageObject.color = Util.resolveColor('BLUE');
+                break;
+            case MessageType.Success:
+                messageObject.title = string.MESSAGE_TITLE_SUCCESS;
+                messageObject.color = Util.resolveColor('GREEN');
+                break;
             case MessageType.Warning:
                 messageObject.title = string.MESSAGE_TITLE_WARNING;
-                messageObject.color = 0xfcd734;
+                messageObject.color = Util.resolveColor('YELLOW');
                 break;
             case MessageType.Error:
                 messageObject.title = string.MESSAGE_TITLE_ERROR;
-                messageObject.color = 0xff0000;
+                messageObject.color = Util.resolveColor('RED');
                 break;
         }
         return messageObject;

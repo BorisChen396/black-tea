@@ -1,10 +1,13 @@
 const voice = require('@discordjs/voice');
 const { Permissions } = require('discord.js');
 
+const { Table } = require ('./table.js');
+
 const { Message, MessageType } = require('./message.js');
 const string = require('./string.json');
 
 const HIGH_PING = 200;
+const ITEMS_PER_PAGE = 10;
 
 class Player {
     constructor(messageChannel) {
@@ -92,6 +95,10 @@ class Player {
     
     disconnect() {
         if(this.subscription) {
+            if(this.queueLock) {
+                return new Message(MessageType.Error, string.ERROR_PLAYER_QUEUE_LOCKED);
+            }
+            this.queue = [];
             this.subscription.player.stop(true);
             this.subscription.unsubscribe();
         }
@@ -102,6 +109,33 @@ class Player {
     enqueue(track) {
         this.queue.push(track);
         this.next();
+    }
+    
+    getQueue(page) {
+        if(this.queue.length == 0) {
+            return new Message(MessageType.Warning, 'There is no item in the queue.');
+        }
+        const table = new Table();
+        table.addRow('No.', 'Title');
+        for(var i = page * ITEMS_PER_PAGE; i < this.queue.length; i++) {
+            var title = this.queue[i].title ? this.queue[i].title : this.queue[i].url;
+            var byteLength = 0;
+            for(var j in title) {
+                var s = title.charCodeAt(j);
+                while(s > 0) {
+                    s = s >> 8;
+                    byteLength++;
+                }
+                if(byteLength >= 20) {
+                    title = title.slice(0, byteLength == 20 ? j : --j) + '...';
+                    break;
+                }
+            }
+            table.addRow(`#${i}`, title);
+            if(i + 1 == (page + 1) * ITEMS_PER_PAGE) break;
+        }
+        const message = new Message(MessageType.Info, `${this.queue.length} item(s) queued.\n\`\`\`${table.create()}\`\`\``);
+        return message;
     }
 
     pause() {
