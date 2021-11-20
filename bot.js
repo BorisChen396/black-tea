@@ -79,7 +79,7 @@ async function setServerData(guild) {
     ]).catch(async error => {
         console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${error}`);
         const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_SET_COMMANDS);
-        errorMessage.addData(string.MESSAGE_FIELD_TITLE_DETAILS, error.toString());
+        errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
         await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
         await guild.leave();
     });
@@ -164,7 +164,7 @@ client.on('interactionCreate', async interaction => {
                     })
                     .catch(async error => {
                         const errorMessage = new Message(MessageType.Error, string.ERROR_UNNKNOWN);
-                        errorMessage.addData(string.MESSAGE_FIELD_TITLE_DETAILS, error.toString());
+                        errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
                         errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
                         await interaction.editReply({embeds: [ errorMessage.createMessage() ]});
                     });
@@ -184,6 +184,7 @@ client.on('interactionCreate', async interaction => {
                 url = new URL(interaction.options.get('track').value);
             } catch (e) {
                 const errorMessage = new Message(MessageType.Error, `${interaction.options.get('track').value} is not a valid URL.`);
+                errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', interaction.user.tag);
                 errorMessage.addData('MESSAGE_FIELD_TITLE_REQUESTED_BY', interaction.user.tag);
                 await interaction.editReply({ embeds:[errorMessage.createMessage()] });
                 break;
