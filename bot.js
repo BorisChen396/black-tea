@@ -17,18 +17,18 @@ const { Message, MessageType } = require('./message.js');
 const string = require('./string.json');
 
 const permissions = [
-    'VIEW_CHANNEL',
-    'SEND_MESSAGES',
-    'ADD_REACTIONS',
-    'CONNECT',
-    'SPEAK',
-    'USE_VAD'
+    Discord.Permissions.FLAGS.VIEW_CHANNEL,
+    Discord.Permissions.FLAGS.SEND_MESSAGES,
+    Discord.Permissions.FLAGS.ADD_REACTIONS,
+    Discord.Permissions.FLAGS.CONNECT,
+    Discord.Permissions.FLAGS.SPEAK,
+    Discord.Permissions.FLAGS.USE_VAD,
 ];
 const data = {};
 
 async function setServerData(guild) {
     console.log(`Checking my permissions in server ${guild.name}. (${guild.id})`);
-    if(!permissions.every(e => guild.me.permissions.toArray().includes(e))) {
+    if(!guild.me.permissions.has(permissions)) {
         console.error(`Permission rejected. Leaving server. (${guild.id})`);
         const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_CHECK_PERMISSION);
         await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
@@ -129,6 +129,11 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ embeds:[errorMessage] });
                 break;
             }
+            if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
+                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                await interaction.reply({ embeds:[errorMessage] });
+                break;
+            }
             if((errorMessage = data[interaction.guild.id].player.disconnect()) instanceof Message) {
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
                 await interaction.reply({ embeds:[errorMessage.createMessage()] })
@@ -147,7 +152,7 @@ client.on('interactionCreate', async interaction => {
                     await interaction.editReply({ embeds: [result.createMessage()] });
                 }
                 else {
-                    interaction.editReply({ embeds: [result.createMessage()] }).then(queueMessage => {
+                    await interaction.editReply({ embeds: [result.createMessage()] }).then(queueMessage => {
                         const filter = (reaction, user) => ['⬅️', '➡️'].includes(reaction.emoji.name) && user.id === interaction.user.id;
                         const collector = queueMessage.createReactionCollector({ filter, time: 60000, dispose: true });
                         const turnPage = async (next) => {
@@ -177,11 +182,16 @@ client.on('interactionCreate', async interaction => {
             else {
                 const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
             }
             break;
 
         case 'play':
+            if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
+                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                await interaction.reply({ embeds:[errorMessage] });
+                break;
+            }
             await interaction.deferReply();
             var url;
             try {
@@ -250,51 +260,71 @@ client.on('interactionCreate', async interaction => {
             break;
 
         case 'pause':
+            if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
+                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                await interaction.reply({ embeds:[errorMessage] });
+                break;
+            }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.pause();
-                interaction.reply({embeds:[new Message(MessageType.Success, `Player paused.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, `Player paused.`).createMessage()]});
             }
             else {
                 const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
             }
             break;
 
         case 'resume':
+            if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
+                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                await interaction.reply({ embeds:[errorMessage] });
+                break;
+            }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.resume();
-                interaction.reply({embeds:[new Message(MessageType.Success, `Player resumed.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, `Player resumed.`).createMessage()]});
             }
             else {
                 const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
             }
             break;
 
         case 'next':
+            if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
+                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                await interaction.reply({ embeds:[errorMessage] });
+                break;
+            }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.subscription.player.stop();
-                interaction.reply({embeds:[new Message(MessageType.Success, `Skipped to the next item.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, `Skipped to the next item.`).createMessage()]});
             }
             else {
                 const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
             }
             break;
 
         case 'stop':
         case 'clear':
+            if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
+                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                await interaction.reply({ embeds:[errorMessage] });
+                break;
+            }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.stop();
-                interaction.reply({embeds:[new Message(MessageType.Success, `Player stopped.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, `Player stopped.`).createMessage()]});
             }
             else {
                 const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
             }
             break;
 
@@ -303,12 +333,12 @@ client.on('interactionCreate', async interaction => {
             if (!client.application.owner) await client.application.fetch();
             if(interaction.member.permissions.has('KICK_MEMBERS') || interaction.user.id === client.application.owner.id) {
                 const errorMessage = new Message(MessageType.Success, `Leaving ${interaction.guild.name}.`);
-                interaction.editReply({embeds: [errorMessage.createMessage()]});
+                await interaction.editReply({embeds: [errorMessage.createMessage()]});
                 interaction.guild.leave();
             }
             else {
                 const errorMessage = new Message(MessageType.Error, 'Permission denied.');
-                interaction.editReply({embeds: [errorMessage.createMessage()]});
+                await interaction.editReply({embeds: [errorMessage.createMessage()]});
             }
             break;
     }
