@@ -4,14 +4,15 @@ const { Permissions } = require('discord.js');
 const { Table } = require ('./table.js');
 
 const { Message, MessageType } = require('./message.js');
-const string = require('./string.json');
+const { getResourceString } = require('./string.js');
 
 const HIGH_PING = 200;
 const ITEMS_PER_PAGE = 10;
 
 class Player {
-    constructor(messageChannel) {
+    constructor(messageChannel, locale) {
         this.messageChannel = messageChannel;
+        this.locale = locale;
         this.queue = [];
         this.queueLock = false;
         
@@ -25,9 +26,9 @@ class Player {
         });
         this.subscription.player.on('error', (error) => {
             //Try to skip to next item or stop the player.
-            const errorMessage = new Message(MessageType.Warning, string.WARNING_PLAYER_ERROR);
+            const errorMessage = new Message(MessageType.Warning, 'WARNING_PLAYER_ERROR');
             errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
-            this.messageChannel.send({embeds: [ errorMessage.createMessage() ]});
+            this.messageChannel.send({embeds: [ errorMessage.createMessage(locale) ]});
             this.next();
         });
         connection.on(voice.VoiceConnectionStatus.Disconnected, async () => {
@@ -45,30 +46,24 @@ class Player {
         });
     }
     
-    static join(messageChannel, voiceChannel) {
+    static join(messageChannel, voiceChannel, locale) {
         return new Promise(async (resolve, reject) => {
             if(!voiceChannel) {
-                reject(new Message(
-                    MessageType.Error, 
-                    string.ERROR_VOICE_CHANNEL_USER_NOT_JOIN));
+                reject(new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_JOIN'));
                 return;
             }
             if(voiceChannel.guild.me.voice.channel && voice.getVoiceConnection(voiceChannel.guild.id)) {
-                reject(new Message(
-                        MessageType.Error,
-                        string.ERROR_VOICE_CHANNEL_ALREADY_JOINED, {
-                            'MESSAGE_FIELD_TITLE_BOT_VOICE_CHANNEL': voiceChannel.guild.me.voice.channel.name,
-                            'MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL': voiceChannel.name
-                        }));
+                reject(new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_ALREADY_JOINED', {
+                    'MESSAGE_FIELD_TITLE_BOT_VOICE_CHANNEL': voiceChannel.guild.me.voice.channel.name,
+                    'MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL': voiceChannel.name
+                }));
                 return;
             }
             const permissions = voiceChannel.guild.me.permissionsIn(voiceChannel);
             if(!permissions.has(Permissions.FLAGS.CONNECT)) {
-                reject(new Message(
-                    MessageType.Error,
-                    string.ERROR_VOICE_CHANNEL_PERMISSION_DENIED, {
-                        'MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL': voiceChannel.name
-                    }));
+                reject(new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_PERMISSION_DENIED', {
+                    'MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL': voiceChannel.name
+                }));
                 return;
             }
             const connection = voice.joinVoiceChannel({
@@ -82,21 +77,19 @@ class Player {
                 ]);
             } catch (e) {
                 connection.destroy();
-                reject(new Message(
-                    MessageType.Error,
-                    string.ERROR_VOICE_CHANNEL_TIMEOUT, {
-                        'MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL': voiceChannel.name
-                    }));
+                reject(new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_TIMEOUT', {
+                    'MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL': voiceChannel.name
+                }));
                 return;
             }
-            resolve(new Player(messageChannel, connection));
+            resolve(new Player(messageChannel, locale));
         });
     }
     
     disconnect() {
         if(this.subscription) {
             if(this.queueLock) {
-                return new Message(MessageType.Error, string.ERROR_PLAYER_QUEUE_LOCKED);
+                return new Message(MessageType.Error, 'ERROR_PLAYER_QUEUE_LOCKED');
             }
             this.queue = [];
             this.subscription.player.stop(true);
@@ -113,7 +106,7 @@ class Player {
     
     getQueue(page) {
         if(this.queue.length == 0) {
-            return new Message(MessageType.Warning, 'There is no item in the queue.');
+            return new Message(MessageType.Warning, 'WARNING_PLAYER_QUEUE_EMPTY');
         }
         const table = new Table();
         table.addRow('No.', 'Title');
@@ -134,8 +127,7 @@ class Player {
             table.addRow(`#${i}`, title);
             if(i + 1 == (page + 1) * ITEMS_PER_PAGE) break;
         }
-        const message = new Message(MessageType.Info, `${this.queue.length} item(s) queued.\n\`\`\`${table.create()}\`\`\``);
-        return message;
+        return {list: table.create(), length: this.queue.length};
     }
 
     pause() {
@@ -165,9 +157,10 @@ class Player {
 			this.queueLock = false;
 		} catch (error) {
 			// If an error occurred, try the next item of the queue instead
-            const errorMessage = new Message(MessageType.Warning, `Failed to play item ${nextTrack.title ? nextTrack.title : nextTrack.url}.`);
+            const content = getResourceString('WARNING_PLAYER_CREATE_SOURCE_ERROR', this.locale, nextTrack.title ? nextTrack.title : nextTrack.url);
+            const errorMessage = new Message(MessageType.Warning, content);
             errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
-            this.messageChannel.send({embeds: [ errorMessage.createMessage() ]});
+            this.messageChannel.send({embeds: [ errorMessage.createMessage(locale) ]});
 			this.queueLock = false;
 			return await this.next();
 		}

@@ -13,8 +13,7 @@ const client = new Discord.Client({ intents: [
 const { Track } = require('./track.js');
 const { Player } = require('./player.js');
 const { Message, MessageType } = require('./message.js');
-
-const string = require('./string.json');
+const { getTranslated, getResourceString } = require('./string.js');
 
 const permissions = [
     Discord.Permissions.FLAGS.VIEW_CHANNEL,
@@ -30,71 +29,88 @@ async function setServerData(guild) {
     console.log(`Checking my permissions in server ${guild.name}. (${guild.id})`);
     if(!guild.me.permissions.has(permissions)) {
         console.error(`Permission rejected. Leaving server. (${guild.id})`);
-        const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_CHECK_PERMISSION);
-        await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
+        const errorMessage = new Message(MessageType.Error, 'ERROR_GUILD_CHECK_PERMISSION');
+        await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage(data[guild.id].locale)]});
         await guild.leave();
         return;
     }
     console.log(`Setting data for server ${guild.name}. (${guild.id})`);
-    data[guild.id] = {};
-    guild.commands.set([
-        {
-            name: 'join',
-            description: string.COMMAND_DESCRIPTION_JOIN
-        },
-        {
-            name: 'play',
-            description: string.COMMAND_DESCRIPTION_PLAY,
-            options: [{
-                name: 'track',
-                type: 'STRING',
-                description: 'The URL of the track.',
-                required: true
-            }]
-        },
-        {
-            name: 'queue',
-            description: string.COMMAND_DESCRIPTION_QUEUE
-        },
-        {
-            name: 'pause',
-            description: string.COMMAND_DESCRIPTION_PAUSE
-        },
-        {
-            name: 'resume',
-            description: string.COMMAND_DESCRIPTION_RESUME
-        },
-        {
-            name: 'next',
-            description: string.COMMAND_DESCRIPTION_NEXT
-        },
-        {
-            name: 'stop',
-            description: string.COMMAND_DESCRIPTION_STOP
-        },
-        {
-            name: 'dc',
-            description: string.COMMAND_DESCRIPTION_DISCONNECT
-        },
-        {
-            name: 'leave-server',
-            description: 'Leave the server. Only the administrators can use this command.'
-        }
-    ]).catch(async error => {
-        console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${error}`);
-        const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_SET_COMMANDS);
-        errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
-        await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
-        await guild.leave();
-    });
+    if(!data[guild.id]) data[guild.id] = {locale: 'default'};
+    await setCommands(guild);
 }
+
+const setCommands = async guild => {
+    try {
+        await guild.commands.set([
+            {
+                name: 'join',
+                description: getResourceString('COMMAND_DESCRIPTION_JOIN', data[guild.id].locale)
+            },
+            {
+                name: 'play',
+                description: getResourceString('COMMAND_DESCRIPTION_PLAY', data[guild.id].locale),
+                options: [{
+                    name: 'track',
+                    type: 'STRING',
+                    description: getResourceString('COMMAND_DESCRIPTION_PARAM_TRACK_URL', data[guild.id].locale),
+                    required: true
+                }]
+            },
+            {
+                name: 'queue',
+                description: getResourceString('COMMAND_DESCRIPTION_QUEUE', data[guild.id].locale)
+            },
+            {
+                name: 'pause',
+                description: getResourceString('COMMAND_DESCRIPTION_PAUSE', data[guild.id].locale)
+            },
+            {
+                name: 'resume',
+                description: getResourceString('COMMAND_DESCRIPTION_RESUME', data[guild.id].locale)
+            },
+            {
+                name: 'next',
+                description: getResourceString('COMMAND_DESCRIPTION_NEXT', data[guild.id].locale)
+            },
+            {
+                name: 'stop',
+                description: getResourceString('COMMAND_DESCRIPTION_STOP', data[guild.id].locale)
+            },
+            {
+                name: 'dc',
+                description: getResourceString('COMMAND_DESCRIPTION_DISCONNECT', data[guild.id].locale)
+            },
+            {
+                name: 'lang',
+                description: getResourceString('COMMAND_DESCRIPTION_SET_LOCALE', data[guild.id].locale),
+                options: [{
+                    name: 'locale',
+                    type: 'STRING',
+                    description: getResourceString('COMMAND_DESCRIPTION_PARAM_LOCALE', data[guild.id].locale),
+                    required: true
+                }]
+            },
+            {
+                name: 'leave-server',
+                description: getResourceString('COMMAND_DESCRIPTION_LEAVE_SERVER', data[guild.id].locale)
+            }
+        ]);
+    } catch (error) {
+        console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${error}`);
+        const errorMessage = new Message(MessageType.Error, 'ERROR_GUILD_SET_COMMANDS');
+        errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
+        await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage(data[guild.id].locale)]});
+        await guild.leave();
+    }
+};
 
 client.on('ready', async () => {
     console.log(`${client.user.username} started at ${client.readyAt.toISOString()}.`);
     client.user.setActivity(`/play`, { type: 'LISTENING' });
     client.guilds.cache.forEach(async value => {
-        const message = new Message(MessageType.Info, `Bot ${client.user.username} is back! >ωO`);
-        value.systemChannel.send({embeds:[message.createMessage()]}).catch(e => console.log(e));
+        const content = getResourceString('INFO_BOT_ACTIVATED', data[value.id]?.locale, client.user.username);
+        const message = new Message(MessageType.Info, content);
+        value.systemChannel.send({embeds:[message.createMessage(data[value.id]?.locale)]}).catch(e => console.log(e));
         await setServerData(value);
     });
 })
@@ -115,84 +131,89 @@ client.on('interactionCreate', async interaction => {
             if(interaction.member instanceof Discord.GuildMember) {
                 const voiceChannel = interaction.member.voice.channel;
                 await interaction.deferReply();
-                Player.join(interaction.channel, voiceChannel)
+                Player.join(interaction.channel, voiceChannel, data[interaction.guild.id].locale)
                     .then(async player => {
                         data[interaction.guild.id].player = player;
-                        await interaction.editReply({embeds: [new Message(MessageType.Success, `Joined ${voiceChannel.name}.`).createMessage()]});
+                        const content = getResourceString(
+                            'SUCCESS_VOICE_CHANNEL_JOINED', 
+                            data[interaction.guild.id].locale, 
+                            voiceChannel.name);
+                        const message = new Message(MessageType.Success, content);
+                        await interaction.editReply({embeds: [message.createMessage(data[interaction.guild.id].locale)]});
                     })
                     .catch(async error => {
-                        error.addData('MESSAGE_FIELD_TITLE_REQUESTED_BY', interaction.user.tag);
-                        await interaction.editReply( {embeds: [error.createMessage()]} );
+                        await interaction.editReply( {embeds: [error.createMessage(data[interaction.guild.id].locale)]} );
                     });
             }
             break;
 
         case 'dc':
             if(!data[interaction.guild.id].player) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED).createMessage();
-                await interaction.reply({ embeds:[errorMessage] });
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_NOT_JOINED');
+                await interaction.reply({ embeds:[errorMessage.createMessage(data[interaction.guild.id].locale)] });
                 break;
             }
             if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
-                await interaction.reply({ embeds:[errorMessage] });
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL');
+                await interaction.reply({ embeds:[errorMessage.createMessage(data[interaction.guild.id].locale)] });
                 break;
             }
             if((errorMessage = data[interaction.guild.id].player.disconnect()) instanceof Message) {
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                await interaction.reply({ embeds:[errorMessage.createMessage()] })
+                await interaction.reply({ embeds:[errorMessage.createMessage(data[interaction.guild.id].locale)] })
                 break;
             }
             delete data[interaction.guild.id].player;
-            await interaction.reply({embeds: [new Message(MessageType.Success, `Disconnected the voice channel.`).createMessage()]});
+            const message = new Message(MessageType.Success, 'SUCCESS_VOICE_CHANNEL_DISCONNECTED');
+            await interaction.reply({embeds: [message.createMessage(data[interaction.guild.id].locale)]});
             break;
             
         case 'queue':
             if(data[interaction.guild.id].player) {
                 await interaction.deferReply();
                 var currentPage = 0;
-                if((result = data[interaction.guild.id].player.getQueue(currentPage)) instanceof Message && result.type !== MessageType.Info) {
-                    result.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                    await interaction.editReply({ embeds: [result.createMessage()] });
+                if((result = data[interaction.guild.id].player.getQueue(currentPage)) instanceof Message) {
+                    await interaction.editReply({ embeds: [result.createMessage(data[interaction.guild.id].locale)] });
                 }
                 else {
-                    await interaction.editReply({ embeds: [result.createMessage()] }).then(queueMessage => {
-                        const filter = (reaction, user) => ['⬅️', '➡️'].includes(reaction.emoji.name) && user.id === interaction.user.id;
-                        const collector = queueMessage.createReactionCollector({ filter, time: 60000, dispose: true });
-                        const turnPage = async (next) => {
-                            if(!data[queueMessage.guild.id].player) {
-                                if(!queueMessage.deleted) await queueMessage.delete();
-                                return;
-                            }
-                            if(currentPage == 0 && !next) return;
-                            const message = data[queueMessage.guild.id].player.getQueue(next ? ++currentPage : --currentPage).createMessage();
-                            queueMessage.edit({ embeds: [message] });
-                            collector.resetTimer();
-                        };
-                        collector.on('collect', r => turnPage(r.emoji.name === '➡️'));
-                        collector.on('remove', r => turnPage(r.emoji.name === '➡️'));
-                        collector.on('end', () => {if(!queueMessage.deleted) queueMessage.delete()});
-                        queueMessage.react('⬅️');
-                        queueMessage.react('➡️');
-                    })
-                    .catch(async error => {
-                        const errorMessage = new Message(MessageType.Error, string.ERROR_UNNKNOWN);
-                        errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
-                        errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                        await interaction.editReply({embeds: [ errorMessage.createMessage() ]});
-                    });
+                    const content = getResourceString('INFO_PLAYER_QUEUE', data[interaction.guild.id].locale, result.length, result.list);
+                    await interaction.editReply({ embeds: [new Message(MessageType.Info, content).createMessage(data[interaction.guild.id].locale)] })
+                        .then(queueMessage => {
+                            const filter = (reaction, user) => ['⬅️', '➡️'].includes(reaction.emoji.name) && user.id === interaction.user.id;
+                            const collector = queueMessage.createReactionCollector({ filter, time: 60000, dispose: true });
+                            const turnPage = async (next) => {
+                                if(!data[queueMessage.guild.id].player) {
+                                    if(!queueMessage.deleted) await queueMessage.delete();
+                                    return;
+                                }
+                                if(currentPage == 0 && !next) return;
+                                const result = data[queueMessage.guild.id].player.getQueue(next ? ++currentPage : --currentPage);
+                                const content = getResourceString('INFO_PLAYER_QUEUE', data[interaction.guild.id].locale, result.length, result.list);
+                                queueMessage.edit({ embeds: [new Message(MessageType.Info, content).createMessage(data[interaction.guild.id].locale)] });
+                                collector.resetTimer();
+                            };
+                            collector.on('collect', r => turnPage(r.emoji.name === '➡️'));
+                            collector.on('remove', r => turnPage(r.emoji.name === '➡️'));
+                            collector.on('end', () => {if(!queueMessage.deleted) queueMessage.delete()});
+                            queueMessage.react('⬅️');
+                            queueMessage.react('➡️');
+                        })
+                        .catch(async error => {
+                            const errorMessage = new Message(MessageType.Error, 'ERROR_UNKNOWN');
+                            errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
+                            await interaction.editReply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
+                        });
                 }
             }
             else {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                await interaction.reply({embeds: [
+                    new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_NOT_JOINED').createMessage(data[interaction.guild.id].locale)
+                ]});
             }
             break;
 
         case 'play':
             if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL').createMessage(data[interaction.guild.id].locale);
                 await interaction.reply({ embeds:[errorMessage] });
                 break;
             }
@@ -201,19 +222,20 @@ client.on('interactionCreate', async interaction => {
             try {
                 url = new URL(interaction.options.get('track').value);
             } catch (e) {
-                const errorMessage = new Message(MessageType.Error, `${interaction.options.get('track').value} is not a valid URL.`);
+                const errorMessage = new Message(MessageType.Error, getResourceString(
+                    'ERROR_INVALID_URL', 
+                    data[interaction.guild.id], 
+                    interaction.options.get('track').value));
                 errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', interaction.user.tag);
-                errorMessage.addData('MESSAGE_FIELD_TITLE_REQUESTED_BY', interaction.user.tag);
-                await interaction.editReply({ embeds:[errorMessage.createMessage()] });
+                await interaction.editReply({ embeds:[errorMessage.createMessage(data[interaction.guild.id].locale)] });
                 break;
             }
             if(!data[interaction.guild.id].player && interaction.member instanceof Discord.GuildMember)
                 try {
-                    const player = await Player.join(interaction.channel, interaction.member.voice.channel);
+                    const player = await Player.join(interaction.channel, interaction.member.voice.channel, data[interaction.guild.id].locale);
                     data[interaction.guild.id].player = player;
                 } catch (e) {
-                    e.addData('MESSAGE_FIELD_TITLE_REQUESTED_BY', interaction.user.tag);
-                    interaction.followUp( {embeds: [e.createMessage()]} );
+                    await interaction.editReply( {embeds: [e.createMessage(data[interaction.guild.id].locale)]} );
                     break;
                 }
             const tracks = [];
@@ -228,10 +250,10 @@ client.on('interactionCreate', async interaction => {
                         tracks.push(track);
                     }
                 } catch (e) {
-                    const errorMessage = new Message(MessageType.Error, `Failed to add the playlist from ${url.href}.`);
+                    const content = getResourceString('ERROR_PLAYLIST_FAILED', data[interaction.guild.id].locale, url.href);
+                    const errorMessage = new Message(MessageType.Error, content);
                     errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', e.toString());
-                    errorMessage.addData('MESSAGE_FIELD_TITLE_REQUESTED_BY', interaction.user.tag);
-                    await interaction.editReply({embeds: [ errorMessage.createMessage() ]});
+                    await interaction.editReply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
                     break;
                 }
             }
@@ -252,104 +274,130 @@ client.on('interactionCreate', async interaction => {
                     }
                     else tracks.push(new Track(url.href, response.title));
                 } catch (e) {
-                    const errorMessage = new Message(MessageType.Error, `Failed to get info from ${url.href}.`);
+                    const content = getResourceString('ERROR_GET_INFO_FROM_URL', data[interaction.guild.id].locale, url.href);
+                    const errorMessage = new Message(MessageType.Error, content);
                     errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', e.stderr ? e.stderr : e.toString());
-                    errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                    await interaction.editReply({embeds: [ errorMessage.createMessage() ]});
+                    await interaction.editReply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
                     break;
                 }
             }
             for(var i in tracks) data[interaction.guild.id].player.enqueue(tracks[i]);
-            await interaction.editReply({embeds:[new Message(MessageType.Success, `Queued ${tracks.length} item(s).`).createMessage()]});
+            const content = getResourceString('SUCCESS_PLAYER_QUEUED', data[interaction.guild.id].locale, tracks.length);
+            await interaction.editReply({embeds:[new Message(MessageType.Success, content).createMessage(data[interaction.guild.id].locale)]});
             break;
 
         case 'pause':
             if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL').createMessage(data[interaction.guild.id].locale);
                 await interaction.reply({ embeds:[errorMessage] });
                 break;
             }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.pause();
-                await interaction.reply({embeds:[new Message(MessageType.Success, `Player paused.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, 'SUCCESS_PLAYER_PAUSED').createMessage(data[interaction.guild.id].locale)]});
             }
             else {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_NOT_JOINED');
+                await interaction.reply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
             }
             break;
 
         case 'resume':
             if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL').createMessage(data[interaction.guild.id].locale);
                 await interaction.reply({ embeds:[errorMessage] });
                 break;
             }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.resume();
-                await interaction.reply({embeds:[new Message(MessageType.Success, `Player resumed.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, 'SUCCESS_PLAYER_RESUMED').createMessage(data[interaction.guild.id].locale)]});
             }
             else {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_NOT_JOINED');
+                await interaction.reply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
             }
             break;
 
         case 'next':
             if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL').createMessage(data[interaction.guild.id].locale);
                 await interaction.reply({ embeds:[errorMessage] });
                 break;
             }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.subscription.player.stop();
-                await interaction.reply({embeds:[new Message(MessageType.Success, `Skipped to the next item.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, 'SUCCESS_PLAYER_NEXT').createMessage(data[interaction.guild.id].locale)]});
             }
             else {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_NOT_JOINED');
+                await interaction.reply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
             }
             break;
 
         case 'stop':
         case 'clear':
             if(interaction.guild.me.voice.channel && !interaction.guild.me.voice.channel.members.has(interaction.user.id)) {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL).createMessage();
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_IN_SAME_CHANNEL').createMessage(data[interaction.guild.id].locale);
                 await interaction.reply({ embeds:[errorMessage] });
                 break;
             }
             if(data[interaction.guild.id].player) {
                 data[interaction.guild.id].player.stop();
-                await interaction.reply({embeds:[new Message(MessageType.Success, `Player stopped.`).createMessage()]});
+                await interaction.reply({embeds:[new Message(MessageType.Success, 'SUCCESS_PLAYER_STOPPED').createMessage(data[interaction.guild.id].locale)]});
             }
             else {
-                const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
-                errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
-                await interaction.reply({embeds: [ errorMessage.createMessage() ]});
+                const errorMessage = new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_NOT_JOINED');
+                await interaction.reply({embeds: [ errorMessage.createMessage(data[interaction.guild.id].locale) ]});
+            }
+            break;
+
+        case 'lang':
+            await interaction.deferReply();
+            if(await isAdmin(interaction.member)) {
+                const locale = interaction.options.get('locale').value;
+                if(locale === 'list') {
+                    await interaction.editReply({embeds: [new Message(MessageType.Success, getTranslated().join(', ')).createMessage()]});
+                    break;
+                }
+                if(getTranslated().includes(locale)) {
+                    data[interaction.guild.id].locale = locale;
+                    await setCommands(interaction.guild);
+                    const message = new Message(MessageType.Success, 'SUCCESS_SET_LOCALE');
+                    await interaction.editReply({embeds: [message.createMessage(data[interaction.guild.id].locale)]});
+                }
+                else {
+                    const errorMessage = new Message(MessageType.Error, 'ERROR_COMMAND_LOCALE_NOT_SUPPORTED');
+                    await interaction.editReply({embeds: [errorMessage.createMessage(data[interaction.guild.id].locale)]});
+                }
+            }
+            else {
+                const errorMessage = new Message(MessageType.Error, 'ERROR_COMMAND_PERMISSION_DENIED');
+                await interaction.editReply({embeds: [errorMessage.createMessage(data[interaction.guild.id].locale)]});
             }
             break;
 
         case 'leave-server':
-            interaction.deferReply();
-            if (!client.application.owner) await client.application.fetch();
-            if(interaction.member.permissions.has('KICK_MEMBERS') || interaction.user.id === client.application.owner.id) {
-                const errorMessage = new Message(MessageType.Success, `Leaving ${interaction.guild.name}.`);
-                await interaction.editReply({embeds: [errorMessage.createMessage()]});
+            await interaction.deferReply();
+            if(await isAdmin(interaction.member)) {
+                const content = getResourceString('SUCCESS_GUILD_LEAVE', data[interaction.guild.id].locale, interaction.guild.name);
+                await interaction.editReply({embeds: [new Message(MessageType.Success, content).createMessage(data[interaction.guild.id].locale)]});
                 interaction.guild.leave();
             }
             else {
-                const errorMessage = new Message(MessageType.Error, 'Permission denied.');
-                await interaction.editReply({embeds: [errorMessage.createMessage()]});
+                const errorMessage = new Message(MessageType.Error, 'ERROR_COMMAND_PERMISSION_DENIED');
+                await interaction.editReply({embeds: [errorMessage.createMessage(data[interaction.guild.id].locale)]});
             }
             break;
     }
 });
 
+const isAdmin = async member => {
+    if (!client.application.owner) await client.application.fetch();
+    return member.permissions.has('ADMINISTRATOR') || member.id === client.application.owner.id
+}
+
 var isExiting = false;
-const onExit =  exit => {
+const onExit = exit => {
     if(isExiting) return;
     isExiting = true;
     client.guilds.cache.forEach((value, key, map) => {
