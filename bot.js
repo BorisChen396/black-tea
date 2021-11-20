@@ -299,15 +299,16 @@ client.on('interactionCreate', async interaction => {
             break;
 
         case 'leave-server':
+            interaction.deferReply();
             if (!client.application.owner) await client.application.fetch();
             if(interaction.member.permissions.has('KICK_MEMBERS') || interaction.user.id === client.application.owner.id) {
                 const errorMessage = new Message(MessageType.Success, `Leaving ${interaction.guild.name}.`);
-                interaction.reply({embeds: [errorMessage.createMessage()]});
+                interaction.editReply({embeds: [errorMessage.createMessage()]});
                 interaction.guild.leave();
             }
             else {
                 const errorMessage = new Message(MessageType.Error, 'Permission denied.');
-                interaction.reply({embeds: [errorMessage.createMessage()]});
+                interaction.editReply({embeds: [errorMessage.createMessage()]});
             }
             break;
     }
