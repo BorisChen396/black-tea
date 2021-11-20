@@ -75,6 +75,10 @@ async function setServerData(guild) {
         {
             name: 'dc',
             description: string.COMMAND_DESCRIPTION_DISCONNECT
+        },
+        {
+            name: 'leave-server',
+            description: 'Leave the server. Only the administrators can use this command.'
         }
     ]).catch(async error => {
         console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${error}`);
@@ -291,6 +295,19 @@ client.on('interactionCreate', async interaction => {
                 const errorMessage = new Message(MessageType.Error, string.ERROR_VOICE_CHANNEL_NOT_JOINED);
                 errorMessage.addData(string.MESSAGE_FIELD_TITLE_REQUESTED_BY, interaction.user.tag);
                 interaction.reply({embeds: [ errorMessage.createMessage() ]});
+            }
+            break;
+
+        case 'leave-server':
+            if (!client.application.owner) await client.application.fetch();
+            if(interaction.member.permissions.has('KICK_MEMBERS') || interaction.user.id === client.application.owner.id) {
+                const errorMessage = new Message(MessageType.Success, `Leaving ${interaction.guild.name}.`);
+                interaction.reply({embeds: [errorMessage.createMessage()]});
+                interaction.guild.leave();
+            }
+            else {
+                const errorMessage = new Message(MessageType.Error, 'Permission denied.');
+                interaction.reply({embeds: [errorMessage.createMessage()]});
             }
             break;
     }
