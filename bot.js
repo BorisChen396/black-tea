@@ -77,7 +77,7 @@ async function setServerData(guild) {
             description: string.COMMAND_DESCRIPTION_DISCONNECT
         }
     ]).catch(async error => {
-        console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${e}`);
+        console.error(`Failed to set slash commands. Leaving server. (${guild.id})\n${error}`);
         const errorMessage = new Message(MessageType.Error, string.ERROR_GUILD_SET_COMMANDS);
         errorMessage.addData(string.MESSAGE_FIELD_TITLE_DETAILS, error.toString());
         await guild.channels.cache.get(guild.systemChannelId).send({embeds: [errorMessage.createMessage()]});
