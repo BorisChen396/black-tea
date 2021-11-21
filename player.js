@@ -4,19 +4,17 @@ const { Permissions } = require('discord.js');
 const { Table } = require ('./table.js');
 
 const { Message, MessageType } = require('./message.js');
-const { getResourceString } = require('./string.js');
 
 const HIGH_PING = 200;
 const ITEMS_PER_PAGE = 10;
 
 class Player {
-    constructor(messageChannel, locale) {
-        this.messageChannel = messageChannel;
-        this.locale = locale;
+    constructor(guildId) {
+        this.guildId = guildId;
         this.queue = [];
         this.queueLock = false;
         
-        const connection = voice.getVoiceConnection(messageChannel.guild.id);
+        const connection = voice.getVoiceConnection(guildId);
         this.subscription = connection.subscribe(voice.createAudioPlayer());
         this.subscription.player.on('stateChange', (oldState, newState) => {
             if(oldState.status !== voice.AudioPlayerStatus.Idle && newState.status === voice.AudioPlayerStatus.Idle) {
@@ -26,9 +24,7 @@ class Player {
         });
         this.subscription.player.on('error', (error) => {
             //Try to skip to next item or stop the player.
-            const errorMessage = new Message(MessageType.Warning, 'WARNING_PLAYER_ERROR');
-            errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
-            this.messageChannel.send({embeds: [ errorMessage.createMessage(locale) ]});
+            if(this.onError) this.onError('ERROR_PLAYER', error.toString());
             this.next();
         });
         connection.on(voice.VoiceConnectionStatus.Disconnected, async () => {
@@ -40,13 +36,13 @@ class Player {
                     // Seems to be reconnecting to a new channel - ignore disconnect
                 } catch (error) {
                     // Seems to be a real disconnect which SHOULDN'T be recovered from
-                    const connection = voice.getVoiceConnection(messageChannel.guild.id);
+                    const connection = voice.getVoiceConnection(guildId);
                     if(connection) connection.destroy();
                 }
         });
     }
     
-    static join(messageChannel, voiceChannel, locale) {
+    static join(voiceChannel) {
         return new Promise(async (resolve, reject) => {
             if(!voiceChannel) {
                 reject(new Message(MessageType.Error, 'ERROR_VOICE_CHANNEL_USER_NOT_JOIN'));
@@ -82,8 +78,13 @@ class Player {
                 }));
                 return;
             }
-            resolve(new Player(messageChannel, locale));
+            resolve(new Player(voiceChannel.guild.id));
         });
+    }
+
+    setOnError(listener) {
+        if(typeof listener !== 'function') return;
+        this.onError = listener;
     }
     
     disconnect() {
@@ -95,7 +96,7 @@ class Player {
             this.subscription.player.stop(true);
             this.subscription.unsubscribe();
         }
-        const connection = voice.getVoiceConnection(this.messageChannel.guild.id);
+        const connection = voice.getVoiceConnection(this.guildId);
         if(connection) connection.disconnect();
     }
 
@@ -147,20 +148,17 @@ class Player {
     async next() {
         if(this.queueLock || this.subscription.player.state.status !== voice.AudioPlayerStatus.Idle || this.queue.length === 0) return;
         this.queueLock = true;
-        const connection = voice.getVoiceConnection(this.messageChannel.guild.id);
+        const connection = voice.getVoiceConnection(this.guildId);
         const nextTrack = this.queue.shift();
         const highPing = connection.ping.udp >= HIGH_PING;
-        if(highPing) console.log(`${this.messageChannel.guild.id}: High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`);
+        if(highPing) console.log(`${this.guildId}: High ping detected! Will use low quality sources if possible. (ping=${connection.ping.udp})`);
         try {
             const resource = await nextTrack.createAudioResource(highPing);
             this.subscription.player.play(resource);
 			this.queueLock = false;
 		} catch (error) {
 			// If an error occurred, try the next item of the queue instead
-            const content = getResourceString('WARNING_PLAYER_CREATE_SOURCE_ERROR', this.locale, nextTrack.title ? nextTrack.title : nextTrack.url);
-            const errorMessage = new Message(MessageType.Warning, content);
-            errorMessage.addData('MESSAGE_FIELD_TITLE_DETAILS', error.toString());
-            this.messageChannel.send({embeds: [ errorMessage.createMessage(locale) ]});
+            if(this.onError) this.onError('ERROR_PLAYER_CREATE_SOURCE', nextTrack.title ? nextTrack.title : nextTrack.url, error.toString());
 			this.queueLock = false;
 			return await this.next();
 		}
