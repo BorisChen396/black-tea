@@ -120,8 +120,6 @@ client.on('guildCreate', async guild => {
     await setServerData(guild);
 })
 
-client.on('guildUpdate', (oldGuild, newGuild) => console.log(oldGuild, newGuild));
-
 client.on('guildDelete', guild => {
     delete data[guild.id];
 });
