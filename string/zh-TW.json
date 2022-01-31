@@ -18,7 +18,6 @@
     "MESSAGE_FIELD_TITLE_DETAILS": "更多資訊",
     "MESSAGE_FIELD_TITLE_BOT_VOICE_CHANNEL": "我的語音頻道",
     "MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL": "你的語音頻道",
-    "INFO_BOT_ACTIVATED": "機器人 $$$ 回來啦! >ωO",
     "INFO_PLAYER_QUEUE": "序列中有$$$個項目。\n```$$$```",
     "SUCCESS_VOICE_CHANNEL_JOINED": "已加入$$$。",
     "SUCCESS_VOICE_CHANNEL_DISCONNECTED": "已離開語音頻道。",

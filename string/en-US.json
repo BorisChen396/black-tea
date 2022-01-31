@@ -18,7 +18,6 @@
     "MESSAGE_FIELD_TITLE_DETAILS": "Details",
     "MESSAGE_FIELD_TITLE_BOT_VOICE_CHANNEL": "My voice channel",
     "MESSAGE_FIELD_TITLE_USER_VOICE_CHANNEL": "Your voice channel",
-    "INFO_BOT_ACTIVATED": "Bot $$$ is back! >ωO",
     "INFO_PLAYER_QUEUE": "$$$ item(s) queued.\n```$$$```",
     "SUCCESS_VOICE_CHANNEL_JOINED": "Joined $$$.",
     "SUCCESS_VOICE_CHANNEL_DISCONNECTED": "Disconnected successfully.",

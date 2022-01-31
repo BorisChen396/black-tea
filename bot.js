@@ -109,9 +109,6 @@ client.on('ready', async () => {
     console.log(`${client.user.username} started at ${client.readyAt.toISOString()}.`);
     client.user.setActivity(`/play`, { type: 'LISTENING' });
     client.guilds.cache.forEach(async value => {
-        const content = getResourceString('INFO_BOT_ACTIVATED', value.preferredLocale, client.user.username);
-        const message = new Message(MessageType.Info, content);
-        value.systemChannel.send({embeds:[message.createMessage(value.preferredLocale)]}).catch(e => console.log(e));
         await setServerData(value);
     });
 })
