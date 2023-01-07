@@ -1,24 +1,21 @@
 {
-    "name": "black-tea",
-    "version": "1.0.0",
-    "description": "A Discord music bot.",
-    "main": "bot.js",
-    "scripts": {
-        "start": "node ./bot.js"
-    },
-    "engines": {
-        "node": "16.x"
-    },
-    "author": "Azure Dragon",
-    "license": "ISC",
-    "dependencies": {
-        "@discordjs/opus": "^0.5.3",
-        "@discordjs/voice": "^0.7.2",
-        "discord.js": "^13.3.1",
-        "dotenv": "^10.0.0",
-        "ffmpeg-static": "^4.4.0",
-        "libsodium-wrappers": "^0.7.9",
-        "youtube-dl-exec": "^1.3.3",
-        "ytpl": "^2.2.3"
-    }
+  "name": "black-tea",
+  "version": "1.0.0",
+  "description": "A Discord music bot.",
+  "scripts": {
+    "start": "cd src && nodemon app.ts --debug",
+    "build": "tsc --project ./"
+  },
+  "author": "Azure Dragon",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/voice": "^0.14.0",
+    "discord.js": "^14.7.1",
+    "libsodium-wrappers": "^0.7.10"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.20",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.9.4"
+  }
 }
