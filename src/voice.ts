@@ -125,8 +125,8 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
         playerInfo.ytdlProcess = ytdlProcess;
         let ytdlError = '';
         ytdlProcess.stderr.on('data', data => ytdlError += data);
-        ytdlProcess.once('close', (code, signal) => {
-            if(code === 0 || signal === 'SIGINT') return;
+        ytdlProcess.once('close', code => {
+            if(code === 0 || ytdlProcess.killed) return;
             process.stderr.write(ytdlError);
             let embed = new EmbedBuilder()
                     .setTitle('Youtube-dl Error')
