@@ -1,3 +1,4 @@
+import { getVoiceConnection, getVoiceConnections } from "@discordjs/voice";
 import { Client, Collection, CommandInteraction, GatewayIntentBits, REST, Routes } from "discord.js";
 import { readdirSync } from "fs";
 import { createServer } from "http";
@@ -13,6 +14,13 @@ const client = new Client({
 client.once('ready', client => {
     console.log(`Logged in as ${client.user.tag}.`);
     registerCommands();
+
+    if(process.argv.includes('--debug') && process.argv.includes('--leave')) {
+        client.guilds.cache.each(guild => {
+            console.log(`Leaving ${guild.name} (${guild.id}).`);
+            guild.leave().catch(console.error);
+        });
+    }
 });
 client.on('interactionCreate', interaction => {
     if(!interaction.isCommand()) return;
@@ -22,6 +30,10 @@ client.on('interactionCreate', interaction => {
     });
 });
 process.once('SIGTERM', () => {
+    client.guilds.cache.each(guild => {
+        let connection = getVoiceConnection(guild.id);
+        if(connection) connection.disconnect();
+    })
     client.destroy();
 });
 
@@ -44,7 +56,7 @@ async function registerCommands() {
     console.log(`Successfully loaded ${data.length} applications commands.`);
 }
 
-createServer((req, res) => {
+createServer((_req, res) => {
     let url = new URL('https://discord.com/api/oauth2/authorize?permissions=0&scope=bot%20applications.commands');
     url.searchParams.set('client_id', config.clientId);
     res.statusCode = 302;

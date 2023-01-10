@@ -1,8 +1,7 @@
-import { AudioPlayerStatus, createAudioPlayer, createAudioResource, demuxProbe, DiscordGatewayAdapterCreator, entersState, getVoiceConnection, joinVoiceChannel, NoSubscriberBehavior, StreamType, VoiceConnectionReadyState, VoiceConnectionStatus } from "@discordjs/voice";
-import { spawn, spawnSync } from "child_process";
+import { AudioPlayerStatus, createAudioPlayer, createAudioResource, demuxProbe, DiscordGatewayAdapterCreator, entersState, getVoiceConnection, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionReadyState, VoiceConnectionStatus } from "@discordjs/voice";
+import { spawn } from "child_process";
 import { Collection, Colors, EmbedBuilder, Guild, MessageCreateOptions, MessagePayload, TextChannel } from "discord.js";
 import { ChildProcess } from 'child_process';
-import { Readable } from 'stream';
 
 export function join(channelId:string, guildId:string, adapterCreater:DiscordGatewayAdapterCreator):Promise<string> {
     return new Promise(async (resolve, reject) => {
@@ -13,7 +12,7 @@ export function join(channelId:string, guildId:string, adapterCreater:DiscordGat
                 return;
             }
             if(connection.state.status === VoiceConnectionStatus.Disconnected) {
-                reject('Previous connection hasn\'t benn destroy.');
+                reject('Previous connection hasn\'t been destroy.');
                 return;
             }
             resolve(connection.joinConfig.channelId);
@@ -24,7 +23,7 @@ export function join(channelId:string, guildId:string, adapterCreater:DiscordGat
             guildId: guildId,
             adapterCreator: adapterCreater
         });
-        connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
+        connection.on(VoiceConnectionStatus.Disconnected, async () => {
             if(!connection) return;
             try {
                 await Promise.race([
@@ -50,37 +49,27 @@ export function join(channelId:string, guildId:string, adapterCreater:DiscordGat
 }
 
 export function addItem(query:string):Promise<ItemInfo[]> {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async resolve => {
         try {
             new URL(query);
         } catch (e) {
             query = 'ytsearch:' + query;
         }
-        let ytdl = spawn('youtube-dl', ['--flat-playlist', '-J', '--', query]);
-        let stderr = '', stdout = '';
-        ytdl.stderr.on('data', data => stderr += data);
-        ytdl.stdout.on('data', data => stdout += data);
-        ytdl.once('close', (code, signal) => {
-            if(code !== 0) {
-                reject(new Error(stderr || `Process exited with ${code || signal}.`));
-                return;
+        let response = await getYtdlInfo(query || '');
+        let result = [] as ItemInfo[];
+        if(response._type === 'playlist') {
+            for(let item of response.entries) {
+                result.push({
+                    url: item.url,
+                    title: item.title
+                });
             }
-            let response = JSON.parse(stdout);
-            let result = [] as ItemInfo[];
-            if(response._type === 'playlist') {
-                for(let item of response.entries) {
-                    result.push({
-                        url: item.url,
-                        title: item.title
-                    });
-                }
-            }
-            else result.push({
-                url: response.webpage_url,
-                title: response.title
-            });
-            resolve(result);
+        }
+        else result.push({
+            url: response.webpage_url,
+            title: response.title
         });
+        resolve(result);
     });
 }
 
@@ -112,10 +101,9 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
             player.on(AudioPlayerStatus.Idle, () => {
                 if(guild) next(guild).catch(console.error);
             });
+            player.on('error', console.error);
             connection.subscribe(player);
         }
-
-        let response = await getYtdlInfo(playerInfo.queue[index].url || '');
 
         if(playerInfo?.queuelock) {
             reject('Queue lock held.');
@@ -123,8 +111,31 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
         }
         playerInfo.queuelock = true;
 
+        if(playerInfo.ytdlProcess && playerInfo.ytdlProcess.exitCode === null)
+            playerInfo.ytdlProcess.kill('SIGINT');
+
+        let ytdlProcess = spawn('youtube-dl', [
+            '--rm-cache-dir',
+            '--no-warnings',
+            '-q',
+            '-f', 'bestaudio[ext=webm]/bestaudio/best',
+            '-o', '-',
+            '--', playerInfo.queue[index].url || ''
+        ]);
+        playerInfo.ytdlProcess = ytdlProcess;
+        let ytdlError = '';
+        ytdlProcess.stderr.on('data', data => ytdlError += data);
+        ytdlProcess.once('close', (code, signal) => {
+            if(code === 0 || signal === 'SIGINT') return;
+            process.stderr.write(ytdlError);
+            let embed = new EmbedBuilder()
+                    .setTitle('Youtube-dl Error')
+                    .setDescription(ytdlError)
+                    .setColor(Colors.Red);
+            sendMessage(guild, playerInfo?.channelId, {embeds: [ embed ]});
+        });
         try {
-            let { stream, type } = await demuxProbe(await createHttpStream(response.url));
+            let { stream, type } = await demuxProbe(ytdlProcess.stdout);
             player.play(createAudioResource(stream, { inputType: type }));
             playerInfo.currentIndex = index;
             playerInfos.set(guild.id, playerInfo);
@@ -135,6 +146,7 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
             playerInfo.queuelock = false;
         }
 
+        let response = await getYtdlInfo(playerInfo.queue[index].url || '');
         if(playerInfo.channelId) {
             let channel = guild.channels.cache.get(playerInfo.channelId);
             if(channel instanceof TextChannel) {
@@ -158,6 +170,7 @@ function getYtdlInfo(url:string):Promise<any> {
         let ytdl = spawn('youtube-dl', [
             '--rm-cache-dir',
             '--no-warnings',
+            '--flat-playlist',
             '-q',
             '-f', 'bestaudio[ext=webm]/bestaudio/best',
             '-J',
@@ -173,25 +186,31 @@ function getYtdlInfo(url:string):Promise<any> {
     });
 }
 
-function createHttpStream(url:string):Promise<Readable> {
-    return new Promise(async resolve => {
-        let httpModule;
-        httpModule = new URL(url).protocol === 'https:' ? await import('https') : await import('http');
-        httpModule.get(url, resolve);
-    });
-}
-
 export function next(guild:Guild):Promise<number> {
     return new Promise((resolve, reject) => {
         let playerInfo = playerInfos.get(guild.id);
         let nextIndex = 0;
         if(playerInfo?.currentIndex != undefined) 
-            nextIndex = playerInfo?.currentIndex + 1;
-        if(nextIndex >= (playerInfo?.queue.length || 0)) {
+            nextIndex = playerInfo?.currentIndex;
+        if(++nextIndex >= (playerInfo?.queue.length || 0)) {
             reject('Index out of bounds.');
             return;
         }
         skipTo(guild, nextIndex).then(() => resolve(nextIndex)).catch(reject);
+    });
+}
+
+export function prev(guild:Guild):Promise<number> {
+    return new Promise((resolve, reject) => {
+        let playerInfo = playerInfos.get(guild.id);
+        let prevIndex = 0;
+        if(playerInfo?.currentIndex != undefined) 
+            prevIndex = playerInfo?.currentIndex;
+        if(--prevIndex < 0) {
+            reject('Index out of bounds.');
+            return;
+        }
+        skipTo(guild, prevIndex).then(() => resolve(prevIndex)).catch(reject);
     });
 }
 
