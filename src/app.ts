@@ -1,4 +1,4 @@
-import { getVoiceConnection, getVoiceConnections } from "@discordjs/voice";
+import { getVoiceConnection } from "@discordjs/voice";
 import { Client, Collection, CommandInteraction, GatewayIntentBits, REST, Routes } from "discord.js";
 import { readdirSync } from "fs";
 import { createServer } from "http";
@@ -43,7 +43,6 @@ async function registerCommands() {
     let commandFiles = readdirSync('./commands');
     let commands = [];
     for(let filename of commandFiles) {
-        
         let command = await import(path.resolve(`./commands/${filename}`));
         commands.push(command.data.toJSON());
         commandsExec.set(command.data.name, command.execute);

@@ -10,25 +10,29 @@ export const data = new SlashCommandBuilder()
 export function execute(interaction:CommandInteraction) : Promise<void> {
     return new Promise(async (resolve, reject) => {
         if(!interaction.guildId) {
-            reject('Guild ID is null.');
+            reject(new Error('Guild ID is null.'));
             return;
         }
         if(playerInfos.get(interaction.guildId)?.queuelock) {
-            reject('Player lock held.');
+            reject(new Error('Player lock held.'));
             return;
         }
         let connection = getVoiceConnection(interaction.guildId);
-        if(!connection) {
-            await interaction.reply('No connected voice channel.');
-            reject('No connected voice channel.');
-        }
-        else if(connection.disconnect()) {
-            await interaction.reply('Disconnected successfully.');
-            resolve();
-        }
-        else {
-            await interaction.reply('Unable to disconnect.');
-            reject('Disconnect method returns false.');
+        try {
+            if(!connection) {
+                await interaction.reply('No connected voice channel.');
+                reject(new Error('No connected voice channel.'));
+            }
+            else if(connection.disconnect()) {
+                await interaction.reply('Disconnected successfully.');
+                resolve();
+            }
+            else {
+                await interaction.reply('Unable to disconnect.');
+                reject(new Error('Disconnect method returns false.'));
+            }
+        } catch (e) {
+            reject(e);
         }
     });
 }

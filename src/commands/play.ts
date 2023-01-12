@@ -13,27 +13,38 @@ export const data = new SlashCommandBuilder()
 export function execute(interaction:ChatInputCommandInteraction) : Promise<void> {
     return new Promise(async (resolve, reject) => {
         if(!interaction.guild) {
-            reject('Guild ID is null.');
+            reject(new Error('Guild ID is null.'));
             return;
         }
-        await interaction.deferReply();
+        try {
+            await interaction.deferReply();
+        } catch (e) {
+            reject(e);
+            return;
+        }
         let member = interaction.member as GuildMember;
         if(!member.voice.channelId) {
-            await interaction.editReply(`You need to join a voice channel first.`);
-            reject('The user has no voice channel.');
+            interaction.editReply(`You need to join a voice channel first.`).then(() => {
+                reject(new Error('The user has no voice channel.'));
+            }).catch(reject);
             return;
         }
         try {
             let channelId = await join(member.voice.channelId, interaction.guild.id, interaction.guild.voiceAdapterCreator);
             if(channelId !== member.voice.channelId) {
-                reject(`Disconnect me from ${interaction.guild.channels.cache.get(channelId)?.name} first.`);
+                reject(new Error(`Disconnect me from ${interaction.guild.channels.cache.get(channelId)?.name} first.`));
                 return;
             }
-            await interaction.editReply(`Joined ${interaction.guild.channels.cache.get(channelId)?.name}.`);
+            else try {
+                await interaction.editReply(`Joined ${interaction.guild.channels.cache.get(channelId)?.name}.`);
+            } catch (e) {
+                reject(e);
+                return;
+            }
         } catch (e) {
-            await interaction.editReply('Unable to join the voice channel.');
-            console.error(e);
-            reject('Unable to connect to the voice channel.');
+            interaction.editReply('Unable to join the voice channel.').then(() => {
+                reject(e);
+            }).catch(reject);
             return;
         }
 
@@ -41,9 +52,9 @@ export function execute(interaction:ChatInputCommandInteraction) : Promise<void>
         try {
             items = await addItem(interaction.options.getString('url') || '');
         } catch (e) {
-            await interaction.editReply(`Unable to add the item.\n${e}`);
-            console.error(e);
-            reject(e);
+            interaction.editReply(`Unable to add the item.\n${e}`).then(() => {
+                reject(e);
+            }).catch(reject);
             return;
         }
         let playerInfo = playerInfos.get(interaction.guild.id);
@@ -56,22 +67,30 @@ export function execute(interaction:ChatInputCommandInteraction) : Promise<void>
             playerInfos.set(interaction.guild.id, playerInfo);
         }
         else if(playerInfo.queuelock) {
-            await interaction.editReply('Wait for the previous command to be completed, then try again.');
-            reject(`Queue lock held. ${interaction.guild.id}`);
+            interaction.editReply('Wait for the previous command to be completed, then try again.').then(() => {
+                reject(new Error(`Queue lock held. ${interaction.guild?.id}`));
+            }).catch(reject);
             return;
         }
         else playerInfo.queuelock = true;
         let autoplayIndex = playerInfo.queue.length;
         for(let item of items) playerInfo.queue.push(item);
         playerInfo.queuelock = false;
-        await interaction.editReply(`Added ${items.length} item(s), ${playerInfo.queue.length} item(s) queued.`);
+        try {
+            await interaction.editReply(`Added ${items.length} item(s), ${playerInfo.queue.length} item(s) queued.`);
+        } catch (e) {
+            reject(e);
+            return;
+        }
         playerInfo.channelId = interaction.channelId;
         if(getVoiceConnection(interaction.guild.id)?.state.status === VoiceConnectionStatus.Ready) {
             let state = getVoiceConnection(interaction.guild.id)?.state as VoiceConnectionReadyState;
             if(!state.subscription || state.subscription?.player.state.status === AudioPlayerStatus.Idle)
-                await skipTo(interaction.guild, autoplayIndex);
+                skipTo(interaction.guild, autoplayIndex).then(resolve).catch(reject);
         }
-        else playerInfos.delete(interaction.guild.id);
-        resolve();
+        else {
+            playerInfos.delete(interaction.guild.id);
+            reject(new Error('Voice connection is not in ready state.'));
+        }
     });
 }

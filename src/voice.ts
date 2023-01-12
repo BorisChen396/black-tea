@@ -12,7 +12,7 @@ export function join(channelId:string, guildId:string, adapterCreater:DiscordGat
                 return;
             }
             if(connection.state.status === VoiceConnectionStatus.Disconnected) {
-                reject('Previous connection hasn\'t been destroy.');
+                reject(new Error('Previous connection hasn\'t been destroy.'));
                 return;
             }
             resolve(connection.joinConfig.channelId);
@@ -49,27 +49,28 @@ export function join(channelId:string, guildId:string, adapterCreater:DiscordGat
 }
 
 export function addItem(query:string):Promise<ItemInfo[]> {
-    return new Promise(async resolve => {
+    return new Promise((resolve, reject) => {
         try {
             new URL(query);
         } catch (e) {
             query = 'ytsearch:' + query;
         }
-        let response = await getYtdlInfo(query || '');
-        let result = [] as ItemInfo[];
-        if(response._type === 'playlist') {
-            for(let item of response.entries) {
-                result.push({
-                    url: item.url,
-                    title: item.title
-                });
+        getYtdlInfo(query || '').then(response => {
+            let result = [] as ItemInfo[];
+            if(response._type === 'playlist') {
+                for(let item of response.entries) {
+                    result.push({
+                        url: item.url,
+                        title: item.title
+                    });
+                }
             }
-        }
-        else result.push({
-            url: response.webpage_url,
-            title: response.title
-        });
-        resolve(result);
+            else result.push({
+                url: response.webpage_url,
+                title: response.title
+            });
+            resolve(result);
+        }).catch(reject);
     });
 }
 
@@ -77,11 +78,11 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
     return new Promise(async (resolve, reject) => {
         let playerInfo = playerInfos.get(guild.id);
         if(!playerInfo) {
-            reject(`Player info of ${guild.id} is null.`);
+            reject(new Error(`Player info of ${guild.id} is null.`));
             return;
         }
         if(!playerInfo.queue[index]) {
-            reject('No such item.');
+            reject(new Error('No such item.'));
             return;
         }
 
@@ -106,7 +107,7 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
         }
 
         if(playerInfo?.queuelock) {
-            reject('Queue lock held.');
+            reject(new Error('Queue lock held.'));
             return;
         }
         playerInfo.queuelock = true;
@@ -146,22 +147,23 @@ export function skipTo(guild:Guild, index:number):Promise<void> {
             playerInfo.queuelock = false;
         }
 
-        let response = await getYtdlInfo(playerInfo.queue[index].url || '');
-        if(playerInfo.channelId) {
-            let channel = guild.channels.cache.get(playerInfo.channelId);
-            if(channel instanceof TextChannel) {
-                let embed = new EmbedBuilder().setTitle(response.title)
-                        .setDescription(`Playing #${index + 1}, ${playerInfo.queue.length} item(s) queued.`)
-                        .setAuthor({
-                            name: response.uploader,
-                            url: response.uploader_url
-                        })
-                        .setThumbnail(response.thumbnail)
-                        .setURL(response.webpage_url);
-                await sendMessage(guild, playerInfo.channelId, {embeds: [ embed ]});
+        getYtdlInfo(playerInfo.queue[index].url || '').then(response => {
+            if(playerInfo?.channelId) {
+                let channel = guild.channels.cache.get(playerInfo.channelId);
+                if(channel instanceof TextChannel) {
+                    let embed = new EmbedBuilder().setTitle(response.title)
+                            .setDescription(`Playing #${index + 1}, ${playerInfo.queue.length} item(s) queued.`)
+                            .setAuthor({
+                                name: response.uploader || null,
+                                url: response.uploader_url || null
+                            })
+                            .setThumbnail(response.thumbnail || null)
+                            .setURL(response.webpage_url);
+                    sendMessage(guild, playerInfo.channelId, {embeds: [ embed ]});
+                }
             }
-        }
-        resolve();
+            resolve();
+        }).catch(reject);
     });
 }
 
@@ -180,7 +182,7 @@ function getYtdlInfo(url:string):Promise<any> {
         ytdl.stderr.on('data', data => errorData += data);
         ytdl.stdout.on('data', data => responseData += data);
         ytdl.once('close', async code => {
-            if(code !== 0) reject(errorData);
+            if(code !== 0) reject(new Error(errorData));
             else resolve(JSON.parse(responseData));
         });
     });
@@ -193,7 +195,7 @@ export function next(guild:Guild):Promise<number> {
         if(playerInfo?.currentIndex != undefined) 
             nextIndex = playerInfo?.currentIndex;
         if(++nextIndex >= (playerInfo?.queue.length || 0)) {
-            reject('Index out of bounds.');
+            reject(new Error('Index out of bounds.'));
             return;
         }
         skipTo(guild, nextIndex).then(() => resolve(nextIndex)).catch(reject);
@@ -207,7 +209,7 @@ export function prev(guild:Guild):Promise<number> {
         if(playerInfo?.currentIndex != undefined) 
             prevIndex = playerInfo?.currentIndex;
         if(--prevIndex < 0) {
-            reject('Index out of bounds.');
+            reject(new Error('Index out of bounds.'));
             return;
         }
         skipTo(guild, prevIndex).then(() => resolve(prevIndex)).catch(reject);
