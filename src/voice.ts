@@ -104,7 +104,9 @@ export class Voice {
             const player = connection.state.subscription?.player ?? 
                 createAudioPlayer().on(AudioPlayerStatus.Idle, () => {
                     const queueLength = voiceData.get(guildId)?.queue.length ?? 0;
-                    if(queueLength > index + 1) this.next(guildId).catch(console.error);
+                    if(queueLength > index + 1) this.next(guildId)
+                        .then(message => this.#sendMessage(guildId, { embeds: [ message.data ]}))
+                        .catch(console.error);
                 }).on('unsubscribe', () => console.log('Player is unsubscribed.'));
             if(!connection.state.subscription) connection.subscribe(player);
             player.stop(true);
