@@ -1,61 +1,81 @@
-import { SlashCommandBuilder, CommandInteraction, GuildMember } from 'discord.js';
+import { CommandInteraction, EmbedBuilder, Guild, GuildMember, SlashCommandBuilder, Colors } from "discord.js";
+import { VoiceConnectionStatus, entersState, getVoiceConnection, joinVoiceChannel } from '@discordjs/voice';
 
-import { join } from '../voice';
+const VOICE_CONNECTION_TIMEOUT = 10_000;
 
 export const data = new SlashCommandBuilder()
-        .setName('join')
-        .setDescription('Join a voice channel.')
-        .setDMPermission(false);
+    .setName('join')
+    .setDescription('Join a voice channel.')
+    .setDMPermission(false);
 
-export function execute(interaction:CommandInteraction) : Promise<void> {
-    return new Promise(async (resolve, reject) => {
+export const execute = (interaction : CommandInteraction) => {
+    return new Promise<void>(async (resolve, reject) => {
         if(!interaction.guild) {
-            reject(new Error('Guild ID is null.'));
+            reject(new Error('Guild object should not be null.'));
             return;
         }
-        try {
-            await interaction.deferReply();
-        } catch (e) {
-            reject(e);
+        if(!(interaction.member instanceof GuildMember)) {
+            reject(new Error(`Member type should be GuildMember.`));
             return;
         }
-        let member = interaction.member as GuildMember;
-        if(!member.voice.channelId) {
-            interaction.editReply(`You need to join a voice channel first.`).then(() => {
-                reject(new Error('The user has no voice channel.'));
-            }).catch(reject);
+        if(!interaction.member.voice.channelId) {
+            reject(new EmbedBuilder()
+                .setTitle('No Voice Channel')
+                .setDescription('You need to be in a voice channel before executing this command.')
+                .setColor(Colors.Red));
             return;
         }
-        let channelId : string;
-        try {
-            channelId = await join(member.voice.channelId, interaction.guild.id, interaction.guild.voiceAdapterCreator);
-            resolve();
-        } catch (e) {
-            interaction.editReply('Unable to connect to the voice channel.').then(() => {
-                reject(new Error('Unable to connect to the voice channel.'));
-            }).catch(reject);
-            return;
-        }
-        if(channelId !== member.voice.channelId) {
-            try {
-                await interaction.editReply(`I have joined ${interaction.guild.channels.cache.get(channelId)?.name} already.`);
-                reject(new Error(`Voice connection is already exists in guild ${interaction.guild.name}(${interaction.guild.id}).`));
-            } catch (e) {
-                reject(e);
-            }
-            return;
-        }
-        try {
-            if(channelId !== member.voice.channelId) {
-                await interaction.editReply(`I have joined ${interaction.guild.channels.cache.get(channelId)?.name} already.`);
-                reject(new Error(`Voice connection is already exists in guild ${interaction.guild.name}(${interaction.guild.id}).`));
-            }
-            else {
-                await interaction.editReply(`Joined ${interaction.guild.channels.cache.get(channelId)?.name}.`);
+        let connected = getVoiceConnection(interaction.guild.id);
+        if(connected) {
+            if(interaction.member.voice.channelId === connected.joinConfig.channelId) {
+                await interaction.reply({ embeds: [
+                    new EmbedBuilder()
+                        .setTitle('Joined Voice Channel')
+                        .setDescription(`Joined "${getChannelName(interaction.guild, interaction.member.voice.channelId)}".`)
+                        .setColor(Colors.Blue).data
+                ]}).catch(console.error);
                 resolve();
             }
-        } catch (e) {
-            reject(e);
+            else reject(new EmbedBuilder()
+                .setTitle('Too Many Voice Channels')
+                .setDescription(`Disconnect me from ${getChannelName(interaction.guild, connected.joinConfig.channelId ?? '')} first.`)
+                .setColor(Colors.Red));
+            return;
+        }
+        await interaction.deferReply().catch(console.error);
+        let connection = joinVoiceChannel({
+            guildId: interaction.guild.id,
+            channelId: interaction.member.voice.channelId,
+            adapterCreator: interaction.guild.voiceAdapterCreator
+        }).on(VoiceConnectionStatus.Disconnected, async () => {
+            try {
+                await Promise.race([
+                    entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+                    entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+                ]);
+            } catch (error) {
+                if(connection.state.status !== VoiceConnectionStatus.Destroyed)
+                    connection.state.subscription?.unsubscribe();
+                connection.destroy();
+            }
+        });
+        try {
+            await entersState(connection, VoiceConnectionStatus.Ready, VOICE_CONNECTION_TIMEOUT);
+            let message = new EmbedBuilder()
+                .setTitle('Joined Voice Channel')
+                .setDescription(`Joined "${getChannelName(interaction.guild, interaction.member.voice.channelId)}".`)
+                .setColor(Colors.Blue);
+            await interaction.followUp({ embeds:[ message.data ]}).catch(console.error);
+            resolve();
+        } catch (error) {
+            reject(new EmbedBuilder()
+                .setTitle('Connection Timeout')
+                .setDescription('Voice connection timeout.')
+                .setColor(Colors.Red));
         }
     });
+}
+
+function getChannelName(guild : Guild, channelId : string) {
+    return guild.channels.cache.get(channelId)?.name;
 }

@@ -1,38 +1,54 @@
-import { getVoiceConnection } from '@discordjs/voice';
-import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
-import { playerInfos } from '../voice';
+import { getVoiceConnection } from "@discordjs/voice";
+import { Colors, CommandInteraction, EmbedBuilder, Guild, GuildMember, SlashCommandBuilder } from "discord.js";
+import { Voice } from "../voice.js";
 
 export const data = new SlashCommandBuilder()
-        .setName('disconnect')
-        .setDescription('Disconnect from a voice channel.')
-        .setDMPermission(false);
+    .setName('disconnect')
+    .setDescription('Disconnect from the voice channel.')
+    .setDMPermission(false);
 
-export function execute(interaction:CommandInteraction) : Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        if(!interaction.guildId) {
-            reject(new Error('Guild ID is null.'));
+export const execute = (interaction : CommandInteraction) => {
+    return new Promise<void>(async (resolve, reject) => {
+        if(!interaction.guild) {
+            reject(new Error('Guild object should not be null.'));
             return;
         }
-        if(playerInfos.get(interaction.guildId)?.queuelock) {
-            reject(new Error('Player lock held.'));
+        if(!(interaction.member instanceof GuildMember)) {
+            reject(new Error(`Member type should be GuildMember.`));
             return;
         }
-        let connection = getVoiceConnection(interaction.guildId);
-        try {
-            if(!connection) {
-                await interaction.reply('No connected voice channel.');
-                reject(new Error('No connected voice channel.'));
-            }
-            else if(connection.disconnect()) {
-                await interaction.reply('Disconnected successfully.');
-                resolve();
-            }
-            else {
-                await interaction.reply('Unable to disconnect.');
-                reject(new Error('Disconnect method returns false.'));
-            }
-        } catch (e) {
-            reject(e);
+        let connected = getVoiceConnection(interaction.guild.id);
+        if(!connected) {
+            reject(new EmbedBuilder()
+                .setTitle('No Connected Voice Channel')
+                .setDescription(`Add me to a voice channel first.`)
+                .setColor(Colors.Red));
+            return;
         }
+        let channelId = connected.joinConfig.channelId;
+        if(interaction.member.voice.channelId !== connected.joinConfig.channelId) {
+            reject(new EmbedBuilder()
+                .setTitle('Denied :>')
+                .setDescription(`You need to be in "${getChannelName(interaction.guild, channelId ?? '')}" to execute this command.`)
+                .setColor(Colors.Red));
+            return;
+        }
+        if(connected.disconnect()) {
+            Voice.cleanup(interaction.guild.id);
+            let message = new EmbedBuilder()
+                .setTitle('Disconnected Successfully')
+                .setDescription(`Disconnected from "${getChannelName(interaction.guild, channelId ?? '')}".`)
+                .setColor(Colors.Blue);
+            await interaction.reply({ embeds: [message]}).catch(console.error);
+            resolve();
+        }
+        else reject(new EmbedBuilder()
+            .setTitle('Unable to Disconnect')
+            .setDescription(`Unable to disconnect from "${getChannelName(interaction.guild, channelId ?? '')}".`)
+            .setColor(Colors.Red));
     });
+}
+
+function getChannelName(guild : Guild, channelId : string) {
+    return guild.channels.cache.get(channelId)?.name;
 }

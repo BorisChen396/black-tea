@@ -1,5 +1,8 @@
-node_modules/
 build/
+config/
+node_modules/
+ytdl/
 
+.gitignore
 package-lock.json
 src/config.json

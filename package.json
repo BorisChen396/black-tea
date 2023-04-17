@@ -1,21 +1,19 @@
 {
   "name": "black-tea",
-  "version": "1.0.0",
   "description": "A Discord music bot.",
-  "scripts": {
-    "start": "cd src && nodemon app.ts --debug",
-    "build": "tsc --project ./"
-  },
   "author": "Azure Dragon",
-  "license": "ISC",
-  "dependencies": {
-    "@discordjs/voice": "^0.14.0",
-    "discord.js": "^14.7.1",
-    "libsodium-wrappers": "^0.7.10"
+  "type": "module",
+  "scripts": {
+    "test": "nodemon --signal SIGTERM --watch ./build ./build/main.js"
   },
   "devDependencies": {
-    "nodemon": "^2.0.20",
-    "ts-node": "^10.9.1",
-    "typescript": "^4.9.4"
+    "@types/node": "^18.15.11",
+    "nodemon": "^2.0.22"
+  },
+  "dependencies": {
+    "@discordjs/opus": "^0.9.0",
+    "@discordjs/voice": "^0.16.0",
+    "discord.js": "^14.9.0",
+    "libsodium-wrappers": "^0.7.11"
   }
 }
