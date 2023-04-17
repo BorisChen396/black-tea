@@ -130,7 +130,7 @@ export class Voice {
                 this.#sendMessage(guildId, { embeds: [
                     new EmbedBuilder()
                         .setTitle('Youtube-dl Playback Error')
-                        .setDescription(ytdlProcess.stderr.read())
+                        .setDescription(`Process exited with code ${code}, signal ${signal}.\n${ytdlProcess.stderr.read()}`)
                         .setColor(Colors.Red)
                         .data
                 ]}).catch(console.error);
