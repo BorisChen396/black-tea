@@ -33,19 +33,14 @@ export const execute = (interaction : CommandInteraction) => {
                 .setColor(Colors.Red));
             return;
         }
-        if(connected.disconnect()) {
-            Voice.cleanup(interaction.guild.id);
-            let message = new EmbedBuilder()
-                .setTitle('Disconnected Successfully')
-                .setDescription(`Disconnected from "${getChannelName(interaction.guild, channelId ?? '')}".`)
-                .setColor(Colors.Blue);
-            await interaction.reply({ embeds: [message]}).catch(console.error);
-            resolve();
-        }
-        else reject(new EmbedBuilder()
-            .setTitle('Unable to Disconnect')
-            .setDescription(`Unable to disconnect from "${getChannelName(interaction.guild, channelId ?? '')}".`)
-            .setColor(Colors.Red));
+        connected.destroy();
+        Voice.cleanup(interaction.guild.id);
+        let message = new EmbedBuilder()
+            .setTitle('Disconnected Successfully')
+            .setDescription(`Disconnected from "${getChannelName(interaction.guild, channelId ?? '')}".`)
+            .setColor(Colors.Blue);
+        await interaction.reply({ embeds: [message]}).catch(console.error);
+        resolve();
     });
 }
 

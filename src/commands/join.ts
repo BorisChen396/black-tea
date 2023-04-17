@@ -28,13 +28,20 @@ export const execute = (interaction : CommandInteraction) => {
         let connected = getVoiceConnection(interaction.guild.id);
         if(connected) {
             if(interaction.member.voice.channelId === connected.joinConfig.channelId) {
-                await interaction.reply({ embeds: [
-                    new EmbedBuilder()
-                        .setTitle('Joined Voice Channel')
-                        .setDescription(`Joined "${getChannelName(interaction.guild, interaction.member.voice.channelId)}".`)
-                        .setColor(Colors.Blue).data
-                ]}).catch(console.error);
-                resolve();
+                if(connected.state.status !== VoiceConnectionStatus.Ready) 
+                    reject(new EmbedBuilder()
+                        .setTitle('Invalid Voice Connection Status')
+                        .setDescription(`Voice connection is not in ready state. (status=${connected.state.status})`)
+                        .setColor(Colors.Red));
+                else {
+                    await interaction.reply({ embeds: [
+                        new EmbedBuilder()
+                            .setTitle('Joined Voice Channel')
+                            .setDescription(`Joined "${getChannelName(interaction.guild, interaction.member.voice.channelId)}".`)
+                            .setColor(Colors.Blue).data
+                    ]}).catch(console.error);
+                    resolve();
+                }
             }
             else reject(new EmbedBuilder()
                 .setTitle('Too Many Voice Channels')
@@ -68,6 +75,7 @@ export const execute = (interaction : CommandInteraction) => {
             await interaction.followUp({ embeds:[ message.data ]}).catch(console.error);
             resolve();
         } catch (error) {
+            connection.destroy();
             reject(new EmbedBuilder()
                 .setTitle('Connection Timeout')
                 .setDescription('Voice connection timeout.')
