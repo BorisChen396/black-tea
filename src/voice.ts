@@ -9,6 +9,7 @@ import { REST } from "discord.js";
 const voiceData : Map<string, {
     channelId? : string,
     index : number,
+    queueLock : boolean,
     queue : {
         url : string,
         title : string
@@ -27,7 +28,8 @@ export class Voice {
             if(!guildVoiceData) {
                 guildVoiceData = {
                     index: 0,
-                    queue: []
+                    queue: [],
+                    queueLock: false
                 };
                 voiceData.set(guildId, guildVoiceData);
             }
@@ -84,10 +86,16 @@ export class Voice {
     static skipTo(guildId : string, index : number) {
         const url = voiceData.get(guildId)?.queue[index]?.url;
         const playPromise = new Promise<void>(async (resolve, reject) => {
+            const guildVoiceData = voiceData.get(guildId);
             if(!url) {
                 reject(new Error('No such item.'));
                 return;
             }
+            if(guildVoiceData?.queueLock) {
+                reject(new Error('Queue lock is held.'));
+                return;
+            }
+            if(guildVoiceData) guildVoiceData.queueLock = true;
             const connection = getVoiceConnection(guildId);
             if(!connection || connection.state.status !== VoiceConnectionStatus.Ready) {
                 reject(new Error('Voice connection is not ready.'));
@@ -130,7 +138,12 @@ export class Voice {
             player.once(AudioPlayerStatus.Idle, () => {
                 if(ytdlProcess.exitCode === null) ytdlProcess.kill('SIGINT');
             }).play(createAudioResource(probeInfo.stream, { inputType: probeInfo.type }));
+
+            if(guildVoiceData) guildVoiceData.index = index;
             resolve();
+        }).finally(() => {
+            const guildVoiceData = voiceData.get(guildId);
+            if(guildVoiceData) guildVoiceData.queueLock = false;
         });
         const metadataPromise = new Promise<EmbedBuilder>((resolve, reject) => {
             const queueLength = voiceData.get(guildId)?.queue.length;
