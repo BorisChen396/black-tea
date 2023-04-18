@@ -28,20 +28,13 @@ export const execute = (interaction : CommandInteraction) => {
         let connected = getVoiceConnection(interaction.guild.id);
         if(connected) {
             if(interaction.member.voice.channelId === connected.joinConfig.channelId) {
-                if(connected.state.status !== VoiceConnectionStatus.Ready) 
-                    reject(new EmbedBuilder()
-                        .setTitle('Invalid Voice Connection Status')
-                        .setDescription(`Voice connection is not in ready state. (status=${connected.state.status})`)
-                        .setColor(Colors.Red));
-                else {
-                    await interaction.reply({ embeds: [
-                        new EmbedBuilder()
-                            .setTitle('Joined Voice Channel')
-                            .setDescription(`Joined "${getChannelName(interaction.guild, interaction.member.voice.channelId)}".`)
-                            .setColor(Colors.Blue).data
-                    ]}).catch(console.error);
-                    resolve();
-                }
+                await interaction.reply({ embeds: [
+                    new EmbedBuilder()
+                        .setTitle('Joined Voice Channel')
+                        .setDescription(`Joined "${getChannelName(interaction.guild, interaction.member.voice.channelId)}".`)
+                        .setColor(Colors.Blue).data
+                ]}).catch(console.error);
+                resolve();
             }
             else reject(new EmbedBuilder()
                 .setTitle('Too Many Voice Channels')
@@ -61,8 +54,6 @@ export const execute = (interaction : CommandInteraction) => {
                     entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
                 ]);
             } catch (error) {
-                if(connection.state.status !== VoiceConnectionStatus.Destroyed)
-                    connection.state.subscription?.unsubscribe();
                 connection.destroy();
             }
         });
@@ -77,7 +68,7 @@ export const execute = (interaction : CommandInteraction) => {
         } catch (error) {
             connection.destroy();
             reject(new EmbedBuilder()
-                .setTitle('Connection Timeout')
+                .setTitle('Unable to Join the Voice Channel')
                 .setDescription('Voice connection timeout.')
                 .setColor(Colors.Red));
         }

@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import config from './config.json' assert { type: 'json' }
 import { readdirSync } from 'fs';
 import { ActivityType } from 'discord.js';
+import { getVoiceConnections } from '@discordjs/voice';
 
 const commands : Map<string, {
     data : any,
@@ -82,12 +83,15 @@ function cleanup() {
         client.destroy();
         console.log(`Client destroyed.`);
     }
+    for(let c of getVoiceConnections()) {
+        c[1].destroy();
+        console.log(`Destroyed voice connection in guild ${c[0]}.`);
+    }
 }
 
 process.once('SIGINT', () => cleanup())
     .once('SIGTERM', () => cleanup())
     .once('uncaughtException', e => {
-        console.error(e);
         cleanup();
     })
     .once('unhandledRejection', e => {

@@ -1,230 +1,226 @@
-import { AudioPlayerStatus, VoiceConnectionReadyState, VoiceConnectionStatus, createAudioPlayer, createAudioResource, demuxProbe, getVoiceConnection } from "@discordjs/voice";
 import { spawn } from "child_process";
-import { BaseMessageOptions, Colors, EmbedBuilder } from "discord.js";
-import config from './config.json' assert { type: 'json' }
-import { request } from "https";
-import { Routes } from "discord.js";
-import { REST } from "discord.js";
+import { REST, Routes } from "discord.js";
+import { BaseMessageOptions } from "discord.js";
+import { EmbedBuilder } from "discord.js";
+import config from './config.json' assert { type: 'json' };
+import { Colors } from "discord.js";
+import { AudioPlayerStatus, VoiceConnectionStatus, createAudioPlayer, createAudioResource, demuxProbe, getVoiceConnection } from "@discordjs/voice";
+import { errorEmbed } from "./embeds.js";
 
-const voiceData : Map<string, {
+const ytdlExec = 'yt-dlp';
+const ytdlArgs = [
+    '--rm-cache-dir',
+    '--no-warnings',
+    '-q'
+];
+const voiceData = new Map<string, {
     channelId? : string,
-    index : number,
-    queueLock : boolean,
+    autoplayIndex? : number, 
+    queueLock : boolean, 
     queue : {
         url : string,
         title : string
     }[]
-}> = new Map();
+}>();
 
 export class Voice {
-    static add(guildId : string, url : string) {
+    static addItem(guildId : string, url : string) {
         try {
             new URL(url);
         } catch (e) {
-            url = 'ytsearch:' + url;
+            url = `ytsearch:${url}`;
         }
-        return new Promise<{ count : number, title : string }>(async (resolve, reject) => {
+        return new Promise<{ title : string, count : number }>(async (resolve, reject) => {
             let guildVoiceData = voiceData.get(guildId);
             if(!guildVoiceData) {
                 guildVoiceData = {
-                    index: 0,
-                    queue: [],
-                    queueLock: false
+                    queueLock: false,
+                    queue: []
                 };
                 voiceData.set(guildId, guildVoiceData);
             }
+            if(guildVoiceData.queueLock) {
+                reject(new Error('Queue lock is held.'));
+                return;
+            }
+            guildVoiceData.queueLock = true;
+            
             let autoplayIndex = guildVoiceData.queue.length;
-            let ytdlRawResponse = await getURLInfo(url).catch(reject);
-            if(!ytdlRawResponse) return;
-            let ytdlResponse = JSON.parse(ytdlRawResponse);
-            if(ytdlResponse._type === 'playlist') {
-                for(let entry of ytdlResponse.entries) {
+            let urlInfo = await getURLInfo(url).catch(reject);
+            if(urlInfo._type === 'video') {
+                guildVoiceData.queue.push({
+                    url: urlInfo.webpage_url,
+                    title: urlInfo.title
+                });
+                resolve({ title: urlInfo.title, count: 1 });
+            }
+            else if(urlInfo._type === 'playlist') {
+                for(let entry of urlInfo.entries) {
                     guildVoiceData.queue.push({
                         url: entry.url,
                         title: entry.title
                     });
                 }
                 resolve({
-                    count: ytdlResponse.entries.length,
-                    title: ytdlResponse.title
-                });
-            }
-            else if(ytdlResponse._type === 'video') {
-                guildVoiceData.queue.push({
-                    url: ytdlResponse.webpage_url,
-                    title: ytdlResponse.title
-                });
-                resolve({
-                    count: 1,
-                    title: ytdlResponse.title
+                    title: urlInfo.entries.length > 1 ? urlInfo.title : urlInfo.entries[0]?.title,
+                    count: urlInfo.entries.length
                 });
             }
             else {
-                reject(new YtdlError(`Returned type is invalid. Receiving "${ytdlResponse._type}".`));
+                reject(new Error(`Unsupported type "${urlInfo._type}".`));
                 return;
             }
+            guildVoiceData.queueLock = false;
 
             let connection = getVoiceConnection(guildId);
-            if(connection && connection.state.status === VoiceConnectionStatus.Ready) {
+            if(connection?.state.status === VoiceConnectionStatus.Ready) {
                 let player = connection.state.subscription?.player;
                 if(!player || player.state.status === AudioPlayerStatus.Idle)
-                    this.skipTo(guildId, autoplayIndex)
-                        .then(message => this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error))
-                        .catch(e => {
-                            console.error(e);
-                            if(!(e instanceof Error)) return;
-                            let message = new EmbedBuilder()
-                                .setTitle(e.name)
-                                .setDescription(e.message)
-                                .setColor(Colors.Red);
-                            this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
-                        });
+                    this.skipTo(guildId, autoplayIndex).then(message => {
+                        this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
+                    }).catch(e => {
+                        this.#sendMessage(guildId, { embeds: [ errorEmbed(e).data ]}).catch(console.error);
+                    });
             }
+        }).finally(() => {
+            let guildVoiceData = voiceData.get(guildId);
+            if(guildVoiceData) guildVoiceData.queueLock = false;
         });
     }
 
     static skipTo(guildId : string, index : number) {
-        const url = voiceData.get(guildId)?.queue[index]?.url;
         const playPromise = new Promise<void>(async (resolve, reject) => {
-            const guildVoiceData = voiceData.get(guildId);
-            if(!url) {
-                reject(new Error('No such item.'));
+            let guildVoiceData = voiceData.get(guildId);
+            if(!guildVoiceData) {
+                reject(new Error('This guild does not have a voice data.'));
                 return;
             }
-            if(guildVoiceData?.queueLock) {
+            if(guildVoiceData.queueLock) {
                 reject(new Error('Queue lock is held.'));
                 return;
             }
-            if(guildVoiceData) guildVoiceData.queueLock = true;
-            const connection = getVoiceConnection(guildId);
-            if(!connection || connection.state.status !== VoiceConnectionStatus.Ready) {
-                reject(new Error('Voice connection is not ready.'));
+            guildVoiceData.queueLock = true;
+            let item = guildVoiceData.queue[index];
+            if(!item) {
+                reject(new Error('No such item.'));
                 return;
             }
-            const player = connection.state.subscription?.player ?? 
-                createAudioPlayer().on(AudioPlayerStatus.Idle, () => {
-                    const queueLength = voiceData.get(guildId)?.queue.length ?? 0;
-                    if(queueLength > index + 1) this.next(guildId)
-                        .then(message => this.#sendMessage(guildId, { embeds: [ message.data ]}))
-                        .catch(console.error);
-                }).on('unsubscribe', () => console.log('Player is unsubscribed.'));
-            if(!connection.state.subscription) connection.subscribe(player);
-            player.stop(true);
-            
-            const ytdlProcess = spawn('yt-dlp', [
-                '--rm-cache-dir',
-                '--no-warnings',
-                '-q',
+
+            let ytdlProcess = spawn(ytdlExec, ytdlArgs.concat([
+                '-f', 'bestaudio[ext=webm]/bestaudio/best',
                 '-o', '-',
-                '--', url
-            ]).on('error', e => {
-                this.#sendMessage(guildId, { embeds: [
-                    new EmbedBuilder()
-                        .setTitle(e.name)
-                        .setDescription(e.message)
-                        .setColor(Colors.Red)
-                        .data
-                ]}).catch(console.error);
-            }).on('close', (code, signal) => {
+                '--', item.url
+            ]));
+            let ytdlStderr : any[] = [];
+            ytdlProcess.stderr.on('data', chunk => ytdlStderr.push(chunk));
+            ytdlProcess.on('close', (code, signal) => {
                 if(code === 0 || signal === 'SIGINT') return;
                 this.#sendMessage(guildId, { embeds: [
                     new EmbedBuilder()
                         .setTitle('Youtube-dl Playback Error')
-                        .setDescription(`Process exited with code ${code}, signal ${signal}.\n${ytdlProcess.stderr.read()}`)
+                        .setDescription(`Process exited with code ${code}, signal ${signal}.\n${Buffer.concat(ytdlStderr).toString() ?? 'No error output.'}`)
                         .setColor(Colors.Red)
                         .data
                 ]}).catch(console.error);
             });
             let probeInfo = await demuxProbe(ytdlProcess.stdout).catch(reject);
             if(!probeInfo) return;
+
+            let connection = getVoiceConnection(guildId);
+            if(connection?.state.status !== VoiceConnectionStatus.Ready) {
+                reject(new Error(`Voice connection is not in ready state. (state=${connection?.state.status})`));
+                return;
+            }
+            
+            let player = connection.state.subscription?.player;
+            if(!player) {
+                player = createAudioPlayer().on(AudioPlayerStatus.Idle, () => {
+                    if(guildVoiceData && (guildVoiceData.autoplayIndex ?? -1) + 1 < guildVoiceData.queue.length)
+                        this.next(guildId).then(message => {
+                            this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
+                        }).catch(e => {
+                            this.#sendMessage(guildId, { embeds: [ errorEmbed(e).data ]}).catch(console.error);
+                        });
+                    
+                });
+                connection.subscribe(player);
+            }
+            else player.stop(true);
             player.once(AudioPlayerStatus.Idle, () => {
                 if(ytdlProcess.exitCode === null) ytdlProcess.kill('SIGINT');
             }).play(createAudioResource(probeInfo.stream, { inputType: probeInfo.type }));
 
-            if(guildVoiceData) guildVoiceData.index = index;
+            guildVoiceData.autoplayIndex = index;
             resolve();
         }).finally(() => {
-            const guildVoiceData = voiceData.get(guildId);
+            let guildVoiceData = voiceData.get(guildId);
             if(guildVoiceData) guildVoiceData.queueLock = false;
         });
         const metadataPromise = new Promise<EmbedBuilder>((resolve, reject) => {
-            const queueLength = voiceData.get(guildId)?.queue.length;
-            getURLInfo(url ?? '').then(ytdlRawResponse => {
-                let ytdlResponse = JSON.parse(ytdlRawResponse);
-                const message = new EmbedBuilder()
-                    .setTitle(ytdlResponse.title)
-                    .setDescription(`Playing #${index + 1}, ${queueLength} item(s) queued.`)
-                    .setURL(ytdlResponse.webpage_url)
-                    .setThumbnail(ytdlResponse.thumbnail)
-                    .setColor(Colors.Green);
-                if(ytdlResponse.uploader) message.setAuthor({
-                    name: ytdlResponse.uploader,
-                    url: ytdlResponse.uploader_url
+            getURLInfo(voiceData.get(guildId)?.queue[index]?.url ?? '').then(response => {
+                let message = new EmbedBuilder()
+                    .setTitle(response.title)
+                    .setDescription(`Playing #${index + 1}, ${voiceData.get(guildId)?.queue.length} item(s) queued.`)
+                    .setColor(Colors.Green)
+                    .setURL(response.webpage_url)
+                    .setThumbnail(response.thumbnail);
+                if(response.uploader) message.setAuthor({
+                    name: response.uploader,
+                    url: response.uploader_url
                 });
                 resolve(message);
-            }).catch(e => {
-                const message = new EmbedBuilder()
-                    .setTitle('Unable to Get the Metadata')
-                    .setDescription('An error has occurred.')
-                    .setColor(Colors.Red);
-                if(e instanceof Error) 
-                    message.setTitle(e.name).setDescription(e.message);
-                resolve(message);
-            });
+            }).catch(reject);
         });
-        
-        return new Promise<EmbedBuilder>((resolve, reject) => 
+        return new Promise<EmbedBuilder>((resolve, reject) => {
             Promise.all([playPromise, metadataPromise])
                 .then(([, message]) => resolve(message))
-                .catch(reject));
+                .catch(reject);
+        });
     }
 
     static next(guildId : string) {
-        return this.skipTo(guildId, (voiceData.get(guildId)?.index ?? -1) + 1);
-    }
-    
-    static cleanup(guildId : string) {
-        voiceData.delete(guildId);
+        let nextIndex = (voiceData.get(guildId)?.autoplayIndex ?? -1) + 1;
+        return this.skipTo(guildId, nextIndex);
     }
 
     static setChannel(guildId : string, channelId : string) {
         let guildVoiceData = voiceData.get(guildId);
-        if(!guildVoiceData) return;
-        guildVoiceData.channelId = channelId;
+        if(guildVoiceData) guildVoiceData.channelId = channelId;
+        else console.log(`Warning: Not setting channel ID as guild ${guildId} does not have a voice data.`);
+    }
+
+    static cleanup(guildId : string) {
+        voiceData.delete(guildId);
     }
 
     static #sendMessage(guildId : string, message : BaseMessageOptions) {
         return new Promise<void>((resolve, reject) => {
             let channelId = voiceData.get(guildId)?.channelId;
             if(!channelId) {
-                reject(new Error('Channel ID is not specified.\n' + JSON.stringify(message)));
+                reject(new Error(`No channel ID is specified. Raw message:\n${JSON.stringify(message)}`));
                 return;
             }
             new REST().setToken(config.token)
                 .post(Routes.channelMessages(channelId), { body: message })
-                .then(() => resolve())
-                .catch(reject);
+                .then(() => resolve()).catch(reject);
         });
     }
 }
 
-class YtdlError extends Error {}
-
 const getURLInfo = (url : string) => new Promise<any>((resolve, reject) => {
-    let ytdlProcess = spawn('yt-dlp', [
+    let ytdlProcess = spawn(ytdlExec, ytdlArgs.concat([
         '--flat-playlist',
-        '--rm-cache-dir',
-        '--no-warnings',
-        '-q',
         '-J',
         '--playlist-end', '100',
         '--', url
-    ]);
-    let ytdlResponse = '', ytdlError = '';
-    ytdlProcess.stdout.on('data', data => ytdlResponse += data);
-    ytdlProcess.stderr.on('data', data => ytdlError += data);
-    ytdlProcess.once('close', code => {
-        if(code === 0) resolve(ytdlResponse);
-        else reject(new YtdlError(ytdlError));
-    }).once('error', e => reject(e));
+    ]));
+    const ytdlStdout : any[] = [], ytdlStderr : any[] = [];
+    ytdlProcess.stdout.on('data', chunk => ytdlStdout.push(chunk));
+    ytdlProcess.stderr.on('data', chunk => ytdlStderr.push(chunk));
+    ytdlProcess.on('close', code => {
+        if(code === 0) resolve(JSON.parse(Buffer.concat(ytdlStdout).toString()));
+        else reject(new YtdlError(Buffer.concat(ytdlStderr).toString()));
+    });
 });
+
+class YtdlError extends Error {}

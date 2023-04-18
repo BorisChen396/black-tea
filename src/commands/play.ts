@@ -28,7 +28,7 @@ export const execute = (interaction : CommandInteraction) => {
             reject(new Error(`Invalid parameter type. Receiving "${typeof url}".`));
             return;
         }
-        let result = await Voice.add(interaction.guildId, url).catch(reject);
+        let result = await Voice.addItem(interaction.guildId, url).catch(reject);
         if(!result) return;
         Voice.setChannel(interaction.guildId, interaction.channelId);
         let message = new EmbedBuilder()
