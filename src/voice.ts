@@ -142,6 +142,8 @@ export class Voice {
                             this.#sendMessage(guildId, { embeds: [ errorEmbed(e).data ]}).catch(console.error);
                         });
                     
+                }).on('unsubscribe', subscription => {
+                    if(subscription.player.state.status !== AudioPlayerStatus.Idle) player?.stop(true);
                 });
                 connection.subscribe(player);
             }
