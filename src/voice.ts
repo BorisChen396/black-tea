@@ -143,7 +143,10 @@ export class Voice {
                         });
                     
                 }).on('unsubscribe', subscription => {
-                    if(subscription.player.state.status !== AudioPlayerStatus.Idle) player?.stop(true);
+                    if(subscription.player.state.status !== AudioPlayerStatus.Idle) {
+                        subscription.player.stop(true);
+                        console.log('Stopped player.');
+                    }
                 });
                 connection.subscribe(player);
             }
