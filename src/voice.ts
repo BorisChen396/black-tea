@@ -99,6 +99,11 @@ export class Voice {
                 reject(new Error('Queue lock is held.'));
                 return;
             }
+            let connection = getVoiceConnection(guildId);
+            if(connection?.state.status !== VoiceConnectionStatus.Ready) {
+                reject(new Error(`Voice connection is not in ready state. (state=${connection?.state.status})`));
+                return;
+            }
             guildVoiceData.queueLock = true;
             let item = guildVoiceData.queue[index];
             if(!item) {
@@ -125,12 +130,6 @@ export class Voice {
             });
             let probeInfo = await demuxProbe(ytdlProcess.stdout).catch(reject);
             if(!probeInfo) return;
-
-            let connection = getVoiceConnection(guildId);
-            if(connection?.state.status !== VoiceConnectionStatus.Ready) {
-                reject(new Error(`Voice connection is not in ready state. (state=${connection?.state.status})`));
-                return;
-            }
             
             let player = connection.state.subscription?.player;
             if(!player) {
