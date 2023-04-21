@@ -42,7 +42,9 @@ client.on(Events.ClientReady, client => {
             { body: Array.from(commands.values()).map(value => value.data) });
         console.log(`Successfully loaded ${result.length} application commands.`);
     })();
-    
+
+    if(process.argv.includes('--exit-all')) 
+        client.guilds.cache.forEach(guild => guild.leave().catch(console.error));
 }).on(Events.InteractionCreate, interaction => {
     if(!(interaction instanceof CommandInteraction)) return;
     let command = commands.get(interaction.commandName);
