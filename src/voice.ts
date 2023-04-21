@@ -138,6 +138,23 @@ export class Voice {
             }).on(AudioPlayerStatus.Idle, () => {
                 if(ytdlProcess.exitCode === null && !ytdlProcess.killed)
                     ytdlProcess.kill('SIGINT');
+            }).on(AudioPlayerStatus.Idle, () => {
+                let connection = getVoiceConnection(guildId);
+                if(connection?.state.status !== VoiceConnectionStatus.Ready) return;
+                let guildVoiceData = voiceData.get(guildId);
+                if(!guildVoiceData) return;
+                if(!guildVoiceData.autoplayIndex || guildVoiceData.autoplayIndex + 1 >= guildVoiceData.queue.length) return;
+                this.skipTo(guildId, guildVoiceData.autoplayIndex + 1).then(message => {
+                    this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
+                }).catch(e => {
+                    let message : EmbedBuilder;
+                    if(e instanceof Error) message = errorEmbed(e);
+                    else message = new EmbedBuilder()
+                        .setTitle('Autoplay Error')
+                        .setDescription('An unexpected error occurred.')
+                        .setColor(Colors.Red);
+                    this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
+                });
             });
             let subscription = connection.subscribe(player);
             player.on(AudioPlayerStatus.Idle, () => {
