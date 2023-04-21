@@ -99,17 +99,18 @@ export class Voice {
                 reject(new Error('Queue lock is held.'));
                 return;
             }
-            let connection = getVoiceConnection(guildId);
-            if(connection?.state.status !== VoiceConnectionStatus.Ready) {
-                reject(new Error(`Voice connection is not in ready state. (state=${connection?.state.status})`));
-                return;
-            }
             guildVoiceData.queueLock = true;
             let item = guildVoiceData.queue[index];
             if(!item) {
                 reject(new Error('No such item.'));
                 return;
             }
+            let connection = getVoiceConnection(guildId);
+            if(connection?.state.status !== VoiceConnectionStatus.Ready) {
+                reject(new Error(`Voice connection is not in ready state. (state=${connection?.state.status})`));
+                return;
+            }
+            connection.state.subscription?.unsubscribe();
 
             let ytdlProcess = spawn(ytdlExec, ytdlArgs.concat([
                 '-f', 'bestaudio[ext=webm]/bestaudio/best',
@@ -119,11 +120,11 @@ export class Voice {
             let ytdlStderr : any[] = [];
             ytdlProcess.stderr.on('data', chunk => ytdlStderr.push(chunk));
             ytdlProcess.on('close', (code, signal) => {
-                if(code === 0 || signal === 'SIGINT') return;
+                if(code === 0 || ytdlProcess.killed) return;
                 this.#sendMessage(guildId, { embeds: [
                     new EmbedBuilder()
                         .setTitle('Youtube-dl Playback Error')
-                        .setDescription(`Process exited with code ${code}, signal ${signal}.\n${Buffer.concat(ytdlStderr).toString() ?? 'No error output.'}`)
+                        .setDescription(`Process exited with code ${code}, signal ${signal}.\n${Buffer.concat(ytdlStderr).toString().trim() || 'No error output.'}`)
                         .setColor(Colors.Red)
                         .data
                 ]}).catch(console.error);
@@ -131,28 +132,18 @@ export class Voice {
             let probeInfo = await demuxProbe(ytdlProcess.stdout).catch(reject);
             if(!probeInfo) return;
             
-            let player = connection.state.subscription?.player;
-            if(!player) {
-                player = createAudioPlayer().on(AudioPlayerStatus.Idle, () => {
-                    if(guildVoiceData && (guildVoiceData.autoplayIndex ?? -1) + 1 < guildVoiceData.queue.length)
-                        this.next(guildId).then(message => {
-                            this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
-                        }).catch(e => {
-                            this.#sendMessage(guildId, { embeds: [ errorEmbed(e).data ]}).catch(console.error);
-                        });
-                    
-                }).on('unsubscribe', subscription => {
-                    if(subscription.player.state.status !== AudioPlayerStatus.Idle) {
-                        subscription.player.stop(true);
-                        console.log('Stopped player.');
-                    }
-                });
-                connection.subscribe(player);
-            }
-            else player.stop(true);
-            player.once(AudioPlayerStatus.Idle, () => {
-                if(ytdlProcess.exitCode === null) ytdlProcess.kill('SIGINT');
-            }).play(createAudioResource(probeInfo.stream, { inputType: probeInfo.type }));
+            let player = createAudioPlayer().on('unsubscribe', subscription => {
+                if(subscription.player.state.status !== AudioPlayerStatus.Idle)
+                    subscription.player.stop(true);
+            }).on(AudioPlayerStatus.Idle, () => {
+                if(ytdlProcess.exitCode === null && !ytdlProcess.killed)
+                    ytdlProcess.kill('SIGINT');
+            });
+            let subscription = connection.subscribe(player);
+            player.on(AudioPlayerStatus.Idle, () => {
+                subscription?.unsubscribe();
+            });
+            player.play(createAudioResource(probeInfo.stream, { inputType: probeInfo.type }));
 
             guildVoiceData.autoplayIndex = index;
             resolve();

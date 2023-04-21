@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events, SlashCommandBuilder, CommandInteraction, EmbedBuilder, Colors, Routes, REST } from 'discord.js';
+import { Client, GatewayIntentBits, Events, CommandInteraction, EmbedBuilder, Colors, Routes, REST } from 'discord.js';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import config from './config.json' assert { type: 'json' }
