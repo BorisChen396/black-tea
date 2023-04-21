@@ -143,7 +143,7 @@ export class Voice {
                 if(connection?.state.status !== VoiceConnectionStatus.Ready) return;
                 let guildVoiceData = voiceData.get(guildId);
                 if(!guildVoiceData) return;
-                if(!guildVoiceData.autoplayIndex || guildVoiceData.autoplayIndex + 1 >= guildVoiceData.queue.length) return;
+                if(guildVoiceData.queueLock || !guildVoiceData.autoplayIndex || guildVoiceData.autoplayIndex + 1 >= guildVoiceData.queue.length) return;
                 this.skipTo(guildId, guildVoiceData.autoplayIndex + 1).then(message => {
                     this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
                 }).catch(e => {
