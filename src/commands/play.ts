@@ -1,7 +1,6 @@
 import { Colors, CommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { execute as joinExec } from './join.js';
 import { Voice } from "../voice.js";
-import { VoiceConnectionStatus, getVoiceConnection } from "@discordjs/voice";
 
 export const data = new SlashCommandBuilder()
     .setName('play')
@@ -11,8 +10,8 @@ export const data = new SlashCommandBuilder()
         .setDescription('A URL or search query to add.')
         .setRequired(true));
 
-export const execute = (interaction : CommandInteraction) => {
-    return new Promise<void>(async (resolve, reject) => {
+export const execute = (interaction : CommandInteraction) => 
+    new Promise<void>(async (resolve, reject) => {
         if(!interaction.guildId) {
             reject(new Error('Guild ID should not be null.'));
             return;
@@ -38,4 +37,3 @@ export const execute = (interaction : CommandInteraction) => {
         await interaction.followUp({ embeds: [ message.data ]}).catch(console.error);
         resolve();
     });
-}

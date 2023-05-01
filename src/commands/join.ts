@@ -8,8 +8,8 @@ export const data = new SlashCommandBuilder()
     .setDescription('Join a voice channel.')
     .setDMPermission(false);
 
-export const execute = (interaction : CommandInteraction) => {
-    return new Promise<void>(async (resolve, reject) => {
+export const execute = (interaction : CommandInteraction) => 
+    new Promise<void>(async (resolve, reject) => {
         if(!interaction.guild) {
             reject(new Error('Guild object should not be null.'));
             return;
@@ -73,7 +73,6 @@ export const execute = (interaction : CommandInteraction) => {
                 .setColor(Colors.Red));
         }
     });
-}
 
 function getChannelName(guild : Guild, channelId : string) {
     return guild.channels.cache.get(channelId)?.name;

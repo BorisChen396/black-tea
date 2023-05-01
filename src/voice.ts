@@ -20,7 +20,8 @@ const voiceData = new Map<string, {
     queue : {
         url : string,
         title : string
-    }[]
+    }[],
+    loopmode? : 'single' | 'queue'
 }>();
 
 export class Voice {
@@ -142,11 +143,19 @@ export class Voice {
                 let connection = getVoiceConnection(guildId);
                 if(connection?.state.status !== VoiceConnectionStatus.Ready) return;
                 let guildVoiceData = voiceData.get(guildId);
-                if(!guildVoiceData) return;
-                if(guildVoiceData.queueLock || !guildVoiceData.autoplayIndex || guildVoiceData.autoplayIndex + 1 >= guildVoiceData.queue.length) return;
-                this.skipTo(guildId, guildVoiceData.autoplayIndex + 1).then(message => {
+                if(!guildVoiceData || guildVoiceData.queueLock) return;
+                let skipToIndex = guildVoiceData.autoplayIndex;
+                if(guildVoiceData.loopmode === 'single') skipToIndex = index;
+                else if(skipToIndex === undefined) skipToIndex = 0;
+                else if(skipToIndex + 1 >= guildVoiceData.queue.length) {
+                    if(guildVoiceData.loopmode === 'queue') skipToIndex = 0;
+                    else return;
+                }
+                else skipToIndex++;
+                this.skipTo(guildId, skipToIndex).then(message => {
                     this.#sendMessage(guildId, { embeds: [ message.data ]}).catch(console.error);
                 }).catch(e => {
+                    console.error(e);
                     let message : EmbedBuilder;
                     if(e instanceof Error) message = errorEmbed(e);
                     else message = new EmbedBuilder()
@@ -195,6 +204,12 @@ export class Voice {
         return this.skipTo(guildId, nextIndex);
     }
 
+    static setLoopMode(guildId : string, loopmode? : 'single' | 'queue') {
+        let guildVoiceData = voiceData.get(guildId);
+        if(!guildVoiceData) throw new Error('No guild voice data.');
+        guildVoiceData.loopmode = loopmode;
+    }
+
     static setChannel(guildId : string, channelId : string) {
         let guildVoiceData = voiceData.get(guildId);
         if(guildVoiceData) guildVoiceData.channelId = channelId;
@@ -216,6 +231,12 @@ export class Voice {
                 .post(Routes.channelMessages(channelId), { body: message })
                 .then(() => resolve()).catch(reject);
         });
+    }
+
+    static checkVoiceChannel(guildId : string, channelId? : string) {
+        let connection = getVoiceConnection(guildId);
+        if(!connection) return false;
+        return connection.joinConfig.channelId === channelId;
     }
 }
 

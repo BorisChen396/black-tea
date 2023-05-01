@@ -10,8 +10,8 @@ export const data = new SlashCommandBuilder()
         .setDescription('Specify the index of the item.')
         .setRequired(true));
 
-export const execute = (interaction : CommandInteraction) => {
-    return new Promise<void>(async (resolve, reject) => {
+export const execute = (interaction : CommandInteraction) => 
+    new Promise<void>(async (resolve, reject) => {
         if(!interaction.guild) {
             reject(new Error('Guild object should not be null.'));
             return;
@@ -47,7 +47,6 @@ export const execute = (interaction : CommandInteraction) => {
         await interaction.followUp({ embeds: [ message.data ]}).catch(console.error);
         resolve();
     });
-}
 
 function getChannelName(guild : Guild, channelId : string) {
     return guild.channels.cache.get(channelId)?.name;

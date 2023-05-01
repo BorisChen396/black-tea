@@ -1,16 +1,30 @@
-import { getVoiceConnection } from "@discordjs/voice";
 import { Colors, CommandInteraction, EmbedBuilder, Guild, GuildMember, SlashCommandBuilder } from "discord.js";
 import { Voice } from "../voice.js";
+import { title } from "process";
+import { getVoiceConnection } from "@discordjs/voice";
 
 export const data = new SlashCommandBuilder()
-    .setName('disconnect')
-    .setDescription('Disconnect from the voice channel.')
-    .setDMPermission(false);
+    .setName('loop')
+    .setDescription('Configure loop mode of the player.')
+    .setDMPermission(false)
+    .addStringOption(option => option.setName('mode')
+        .setDescription('Specify a loop mode.')
+        .addChoices({
+            name: 'single',
+            value: 'single'
+        }, {
+            name: 'queue',
+            value: 'queue'
+        }, {
+            name: 'none',
+            value: 'none'
+        })
+        .setRequired(true));
 
 export const execute = (interaction : CommandInteraction) => 
     new Promise<void>(async (resolve, reject) => {
         if(!interaction.guild) {
-            reject(new Error('Guild object should not be null.'));
+            reject(new Error('Guild should not be null.'));
             return;
         }
         if(!(interaction.member instanceof GuildMember)) {
@@ -33,13 +47,15 @@ export const execute = (interaction : CommandInteraction) =>
                 .setColor(Colors.Red));
             return;
         }
-        connected.destroy();
-        Voice.cleanup(interaction.guild.id);
-        let message = new EmbedBuilder()
-            .setTitle('Disconnected Successfully')
-            .setDescription(`Disconnected from "${getChannelName(interaction.guild, channelId ?? '')}".`)
-            .setColor(Colors.Blue);
-        await interaction.reply({ embeds: [message]}).catch(console.error);
+        let mode = interaction.options.get('mode')?.value as 'queue' | 'single' | 'none';
+        Voice.setLoopMode(interaction.guild.id, mode === 'none' ? undefined : mode);
+        await interaction.reply({ embeds: [
+            new EmbedBuilder()
+                .setTitle('Configured Loop Mode')
+                .setDescription(`Loop mode is set to "${mode}".`)
+                .setColor(Colors.Blue)
+                .data
+        ]}).catch(console.error);
         resolve();
     });
 
