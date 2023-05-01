@@ -40,7 +40,7 @@ export const execute = (interaction : CommandInteraction) =>
             return;
         }
         let channelId = connected.joinConfig.channelId;
-        if(Voice.checkVoiceChannel(interaction.guild.id, interaction.member.voice.channelId ?? undefined)) {
+        if(!Voice.checkVoiceChannel(interaction.guild.id, interaction.member.voice.channelId ?? undefined)) {
             reject(new EmbedBuilder()
                 .setTitle('Denied :>')
                 .setDescription(`You need to be in "${getChannelName(interaction.guild, channelId ?? '')}" to execute this command.`)
